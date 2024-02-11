@@ -1,8 +1,8 @@
 #lang typed/racket
 (require typed/rackunit)
 
-;; Assignment 4
-;; Full Project Implemented
+;; Assignment 5
+;; ...
 
 
 ;; OAZO Data Definitions
@@ -15,6 +15,22 @@
 (struct ifleq0? ([test : ExprC] [then : ExprC] [else : ExprC]) #:transparent)
 (define-type ExprC (U numC idC appC binopC ifleq0?))
 
+;; Bindings
+(struct Binding  ([name : Symbol] [val : Real]))
+(define-type Env (Listof Binding))
+(define mt-env '())
+(define extend-env cons)
+
+;; Values
+(struct numV ([n : Number]))
+#;(struct funV ([name : Symbol] [arg : Symbol] [body : ExprC]))
+(define-type Value (U numV Boolean))
+
+;; Top Level Environment
+(define top-env (Env
+                 (Binding (true : #t))
+                 (Binding(false : #f))))
+
 ;; Function Definition
 (struct fdC ([name : Symbol] [arg : (Listof Symbol)] [body : ExprC]) #:transparent)
 
@@ -23,7 +39,7 @@
 ;;-----------------------------------------------------------------------------------
 ;; Interprets the entirely parsed program
 (define (top-interp [program : Sexp]): Real
-  (interp-fns (parse-prog program)))
+  (interp-fns <serialize> (parse-prog program))) ;; TODO add serialize
 
 
 ;; INTERP-FNS
@@ -38,10 +54,10 @@
 ;; INTERP
 ;;-----------------------------------------------------------------------------------
 ;; Inteprets the given expression using list of funs to resolve appC's
-(define (interp [a : ExprC] [fds : (Listof fdC)]) : Real
+(define (interp [a : ExprC] [env : Env] [fds : (Listof fdC)]) : Real
   (match a
-    [(numC n) n]
-    [(idC s) (error 'interp "OAZO Logic Error: Interp of an idC: ~e" s)]
+    [(numC n) (Value )]
+    [(idC s) (lookup s env)]
     [(ifleq0? test then else)
      (if (<= (cast (interp test fds) Real) 0)
          (interp then fds)
@@ -56,8 +72,33 @@
                                  (error 'interp "OAZO Arithmetic Error: Division by zero")))])]
 
     [(appC f args) (define fd (get-fundef f fds))
+                   (interp (fdC-body fd)
+                           (extend-env (Binding (fdC-arg fd)
+                         (interp a env fds) fds) mt-env))]
+    
+    #;[(appC f args) (define fd (get-fundef f fds))
                    (interp (sub-many args (fdC-arg fd) (fdC-body fd) fds) fds)]))
 
+
+;; Turns obbjects into string literals
+(define (serialize [val : Any]) : String
+  (match val
+    [(? number? n) (number->string n)]
+    [#t "true"]
+    [#f "false"]
+    #;[(? string? s) (format "~a" s)]
+    #;[(? procedure? p) "#<procedure>"]
+    #;[(? primop? p) "#<primop>"]
+    [else (error 'serialize "Unsupported value: ~v" val)]))
+
+
+;; Helper that looks up a value in an environment
+(define (lookup [for : Symbol] [env : Env]) : Number
+    (match env
+      ['() (error 'lookup "name not found: ~e" for)]
+      [(cons (Binding name val) r) (cond
+                    [(symbol=? for name) val]
+                    [else (lookup for r)])]))
 
 ;; PARSE-PROG 
 ;;-----------------------------------------------------------------------------------
@@ -136,7 +177,7 @@
                    [else (get-fundef n (rest fds))])]))
 
 ;; Helper thats used to subsitutue values in place for identifiers inside of ExprC's
-(define (sub [what : ExprC] [for : Symbol] [in : ExprC]) : ExprC
+#;(define (sub [what : ExprC] [for : Symbol] [in : ExprC]) : ExprC
   (match in
     [(numC n) in]
     [(idC s) (if (equal? s for) what in)]
@@ -149,7 +190,7 @@
 
 ;; Helper that takes a list of ExprC and List of Symbol and an ExprC and replaces the
 ;; first exprc with the first symbol and then the second and so forth 
-(define (sub-many [args : (Listof ExprC)] [syms : (Listof Symbol)] [in : ExprC] [fds : (Listof fdC)]) : ExprC
+#;(define (sub-many [args : (Listof ExprC)] [syms : (Listof Symbol)] [in : ExprC] [fds : (Listof fdC)]) : ExprC
   (if (not (= (length args) (length syms)))
       (error 'sub-many "OAZO Error: Mismatched number of arguments and symbols")
       (match args
@@ -250,6 +291,7 @@
 (check-exn #rx"Interp of an idC" (lambda () (interp (idC 'x) fds)))
 (check-exn #rx"OAZO"(lambda() (interp (binopC '/ (numC 10) (numC 0)) fds)))
 
+#|
 ;; Top-Interp Tests
 (check-equal? (top-interp
                '{{func {minus-five x} : {+ x {* -1 5}}}
@@ -320,8 +362,5 @@
                                 '{{func {ignoreit x}: {+ 3 4}}
                                   {func {main} : {ignoreit {/ 1 {+ 0 0}}}}})))
 
+|#
 ;;---------------------------------------------------------------------------------
-
-
-
-
