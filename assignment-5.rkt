@@ -13,6 +13,7 @@
 (struct appC ([s : Symbol] [arg : (Listof ExprC)])             #:transparent)
 (struct binopC ([op : Symbol][l : ExprC] [r : ExprC])          #:transparent)
 (struct ifleq0? ([test : ExprC] [then : ExprC] [else : ExprC]) #:transparent)
+(struct lamC ([arg : Symbol] [body : ExprC]))
 (define-type ExprC (U numC idC appC binopC ifleq0?))
 
 ;; Bindings
@@ -23,8 +24,8 @@
 
 ;; Values
 (struct numV ([n : Number]))
-#;(struct funV ([name : Symbol] [arg : Symbol] [body : ExprC]))
-(define-type Value (U numV Boolean))
+(struct closeV ([arg : Symbol] [body : ExprC] [env : Env]))
+(define-type Value (U numV closeV))
 
 ;; Top Level Environment
 (define top-env (Env
@@ -39,7 +40,7 @@
 ;;-----------------------------------------------------------------------------------
 ;; Interprets the entirely parsed program
 (define (top-interp [program : Sexp]): Real
-  (interp-fns <serialize> (parse-prog program))) ;; TODO add serialize
+  (serialize (parse-prog program))) ;; TODO add serialize
 
 
 ;; INTERP-FNS
@@ -83,10 +84,10 @@
 ;; Turns obbjects into string literals
 (define (serialize [val : Any]) : String
   (match val
-    [(? number? n) (number->string n)]
+    [(? numV? n) (number->string (numV-n n))]
+    [(? closeV? s) (format "~a" s)]
     [#t "true"]
     [#f "false"]
-    #;[(? string? s) (format "~a" s)]
     #;[(? procedure? p) "#<procedure>"]
     #;[(? primop? p) "#<primop>"]
     [else (error 'serialize "Unsupported value: ~v" val)]))
