@@ -17,8 +17,8 @@
 (define-type ExprC (U numC idC appC binopC ifleq0?))
 
 ;; Bindings
-(struct Binding  ([name : Symbol] [val : Real]))
-(define-type Env (Listof Binding))
+(struct binding  ([name : Symbol] [val : Real]))
+(struct Env ([lst : (Listof binding)]))
 (define mt-env '())
 (define extend-env cons)
 
@@ -28,9 +28,9 @@
 (define-type Value (U numV closeV))
 
 ;; Top Level Environment
-(define top-env (Env
-                 (Binding (true : #t))
-                 (Binding(false : #f))))
+(define top-env
+  (Env (list (binding 'true 1)
+             (binding 'false 0))))
 
 ;; Function Definition
 (struct fdC ([name : Symbol] [arg : (Listof Symbol)] [body : ExprC]) #:transparent)
@@ -57,7 +57,7 @@
 ;; Inteprets the given expression using list of funs to resolve appC's
 (define (interp [a : ExprC] [env : Env] [fds : (Listof fdC)]) : Real
   (match a
-    [(numC n) (Value )]
+    [(numC n) (numV n)]
     [(idC s) (lookup s env)]
     [(ifleq0? test then else)
      (if (<= (cast (interp test fds) Real) 0)
@@ -71,11 +71,13 @@
                              (if (not (= right-val 0))
                                  (/ (interp a fds) right-val)
                                  (error 'interp "OAZO Arithmetic Error: Division by zero")))])]
-
     [(appC f args) (define fd (get-fundef f fds))
                    (interp (fdC-body fd)
-                           (extend-env (Binding (fdC-arg fd)
+                           (extend-env (binding (fdC-arg fd)
                          (interp a env fds) fds) mt-env))]
+    
+    [(lamC a b) (closeV a b env)]
+
     
     #;[(appC f args) (define fd (get-fundef f fds))
                    (interp (sub-many args (fdC-arg fd) (fdC-body fd) fds) fds)]))
@@ -97,7 +99,7 @@
 (define (lookup [for : Symbol] [env : Env]) : Number
     (match env
       ['() (error 'lookup "name not found: ~e" for)]
-      [(cons (Binding name val) r) (cond
+      [(cons (binding name val) r) (cond
                     [(symbol=? for name) val]
                     [else (lookup for r)])]))
 
@@ -143,7 +145,8 @@
 
     [(list 'ifleq0? test then else)                      ;; ifleq0?
      (ifleq0? (parse test) (parse then) (parse else))]
-    [(and (? symbol? s) (? symbol-valid s)) (idC s)]     ;; idC 
+    [(and (? symbol? s) (? symbol-valid s)) (idC s)]     ;; idC
+    [(list 'anon  ] ;; {anon {id ...} Expr} TODO
     [other (error 'parse "OAZO Syntax error in ~e" other)]))
 
 
@@ -205,7 +208,7 @@
 
 ;; TESTS
 ;;-----------------------------------------------------------------------------------
-
+#|
 ;; Tests for symbol-valid
 (check-equal? (symbol-valid '+) #f)
 (check-equal? (symbol-valid '-) #f)
@@ -292,7 +295,7 @@
 (check-exn #rx"Interp of an idC" (lambda () (interp (idC 'x) fds)))
 (check-exn #rx"OAZO"(lambda() (interp (binopC '/ (numC 10) (numC 0)) fds)))
 
-#|
+
 ;; Top-Interp Tests
 (check-equal? (top-interp
                '{{func {minus-five x} : {+ x {* -1 5}}}
