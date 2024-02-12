@@ -8,22 +8,22 @@
 ;; OAZO Data Definitions
 ;;-----------------------------------------------------------------------------------
 ;; Expressions
-(struct numC ([n : Real])                                      #:transparent)
-(struct idC ([s : Symbol])                                     #:transparent)
-(struct appC ([s : Symbol] [arg : (Listof ExprC)])             #:transparent)
-(struct binopC ([op : Symbol][l : ExprC] [r : ExprC])          #:transparent)
+(struct numC    ([n : Real])                                   #:transparent)
+(struct idC     ([s : Symbol])                                 #:transparent)
+(struct stringC ([str : String])                               #:transparent)
 (struct ifleq0? ([test : ExprC] [then : ExprC] [else : ExprC]) #:transparent)
-(struct lamC ([arg : Symbol] [body : ExprC]))
+(struct lamC    ([arg : Symbol] [body : ExprC])                #:transparent)
+(struct appC    ([s : Symbol] [arg : (Listof ExprC)])          #:transparent)
 (define-type ExprC (U numC idC appC binopC ifleq0?))
 
 ;; Bindings
-(struct binding  ([name : Symbol] [val : Real]))
-(struct Env ([lst : (Listof binding)]))
-(define mt-env '())
+(struct binding ([name : Symbol] [val : Real])                 #:transparent)
+(struct Env     ([lst : (Listof binding)])                     #:transparent)
+(define mt-env  '())
 (define extend-env cons)
 
 ;; Values
-(struct numV ([n : Number]))
+(struct numV   ([n : Number])                                  #:transparent)
 (struct closeV ([arg : Symbol] [body : ExprC] [env : Env]))
 (define-type Value (U numV closeV))
 
@@ -32,45 +32,25 @@
   (Env (list (binding 'true 1)
              (binding 'false 0))))
 
-;; Function Definition
-(struct fdC ([name : Symbol] [arg : (Listof Symbol)] [body : ExprC]) #:transparent)
-
 
 ;; TOP-INTERP
 ;;-----------------------------------------------------------------------------------
 ;; Interprets the entirely parsed program
-(define (top-interp [program : Sexp]): Real
-  (serialize (parse-prog program))) ;; TODO add serialize
-
-
-;; INTERP-FNS
-;;-----------------------------------------------------------------------------------
-;; Inteprets the function named main from the func definitons
-(define (interp-fns [funs : (Listof fdC)]) : Real
-  (let ([main-fd (get-fundef 'main funs)])
-    (define body (fdC-body main-fd))
-    (interp body funs)))
+(define (top-interp [s : Sexp]) : String
+  (serialize (interp (parse s) top-env)))
 
 
 ;; INTERP
 ;;-----------------------------------------------------------------------------------
 ;; Inteprets the given expression using list of funs to resolve appC's
-(define (interp [a : ExprC] [env : Env] [fds : (Listof fdC)]) : Real
-  (match a
+(define (interp [e : ExprC] [env : Env]) : Value
+  (match e
     [(numC n) (numV n)]
     [(idC s) (lookup s env)]
     [(ifleq0? test then else)
      (if (<= (cast (interp test fds) Real) 0)
          (interp then fds)
          (interp else fds))]
-    [(binopC op a b) (match op
-                       ['+ (+ (interp a fds) (interp b fds))]
-                       ['- (- (interp a fds) (interp b fds))]
-                       ['* (* (interp a fds) (interp b fds))]
-                       ['/ (let ([right-val (interp b fds)])
-                             (if (not (= right-val 0))
-                                 (/ (interp a fds) right-val)
-                                 (error 'interp "OAZO Arithmetic Error: Division by zero")))])]
     [(appC f args) (define fd (get-fundef f fds))
                    (interp (fdC-body fd)
                            (extend-env (binding (fdC-arg fd)
@@ -78,11 +58,7 @@
     
     [(lamC a b) (closeV a b env)]
 
-    
-    #;[(appC f args) (define fd (get-fundef f fds))
-                   (interp (sub-many args (fdC-arg fd) (fdC-body fd) fds) fds)]))
-
-
+ 
 ;; Turns obbjects into string literals
 (define (serialize [val : Any]) : String
   (match val
@@ -102,30 +78,6 @@
       [(cons (binding name val) r) (cond
                     [(symbol=? for name) val]
                     [else (lookup for r)])]))
-
-;; PARSE-PROG 
-;;-----------------------------------------------------------------------------------
-;; Takes in the whole program and parses the function definitions and outputs
-;; the list of all fdC's
-(define (parse-prog [s : Sexp]) : (Listof fdC)
-  (match s
-    ['() '()]
-    [(cons f r) (cons (parse-fundef f) (parse-prog r))] 
-    [other (error 'parse-prog "OAZO Syntax Error: Function with invalid syntax in ~e" other)]))
-
-
-;; PARSE-FUNDEF
-;;-----------------------------------------------------------------------------------
-;; Takes in an Sexp and parses it into and function definition for the OAZO language
-(define (parse-fundef [code : Sexp]) : fdC
-  (match code
-    [(list 'func (list 'main) ': body)
-     (fdC 'main '() (parse body))]
-    [(list 'func (list (and (? symbol? name) (? symbol-valid name)) args ...) ': body)
-     (if (list-of-symbols? args) 
-         (fdC name (cast args (Listof Symbol)) (parse body))
-         (error 'parse-func-def "OAZO Syntax Error: ~e" code))]
-    [else (error 'parse-func-def "OAZO Syntax Error: ~e" code)]))
 
 
 ;; PARSE
@@ -205,7 +157,49 @@
             (sub-many rest-args rest-syms
                       (sub (numC (interp arg fds)) sym in) fds)])])))
 
+;; INTERP-FNS
+;;-----------------------------------------------------------------------------------
+;; Inteprets the function named main from the func definitons
+#;(define (interp-fns [funs : (Listof fdC)]) : Real
+  (let ([main-fd (get-fundef 'main funs)])
+    (define body (fdC-body main-fd))
+    (interp body funs)))
 
+
+
+;; PARSE-PROG 
+;;-----------------------------------------------------------------------------------
+;; Takes in the whole program and parses the function definitions and outputs
+;; the list of all fdC's
+#;(define (parse-prog [s : Sexp]) : (Listof fdC)
+  (match s
+    ['() '()]
+    [(cons f r) (cons (parse-fundef f) (parse-prog r))] 
+    [other (error 'parse-prog "OAZO Syntax Error: Function with invalid syntax in ~e" other)]))
+
+
+;; PARSE-FUNDEF
+;;-----------------------------------------------------------------------------------
+;; Takes in an Sexp and parses it into and function definition for the OAZO language
+#;(define (parse-fundef [code : Sexp]) : fdC
+  (match code
+    [(list 'func (list 'main) ': body)
+     (fdC 'main '() (parse body))]
+    [(list 'func (list (and (? symbol? name) (? symbol-valid name)) args ...) ': body)
+     (if (list-of-symbols? args) 
+         (fdC name (cast args (Listof Symbol)) (parse body))
+         (error 'parse-func-def "OAZO Syntax Error: ~e" code))]
+    [else (error 'parse-func-def "OAZO Syntax Error: ~e" code)]))
+
+
+#;[(binopC op a b) (match op
+                       ['+ (+ (interp a fds) (interp b fds))]
+                       ['- (- (interp a fds) (interp b fds))]
+                       ['* (* (interp a fds) (interp b fds))]
+                       ['/ (let ([right-val (interp b fds)])
+                             (if (not (= right-val 0))
+                                 (/ (interp a fds) right-val)
+                                 (error 'interp "OAZO Arithmetic Error: Division by zero")))])]
 ;; TESTS
 ;;-----------------------------------------------------------------------------------
 #|
