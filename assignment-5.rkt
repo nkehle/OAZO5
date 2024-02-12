@@ -17,7 +17,7 @@
 (define-type ExprC (U numC idC appC binopC ifleq0?))
 
 ;; Bindings
-(struct binding ([name : Symbol] [val : Real])                 #:transparent)
+(struct binding ([name : Symbol] [val : Value])                 #:transparent)
 (struct Env     ([lst : (Listof binding)])                     #:transparent)
 (define mt-env  '())
 (define extend-env cons)
@@ -29,9 +29,16 @@
 
 ;; Top Level Environment
 (define top-env
-  (Env (list (binding 'true 1)
-             (binding 'false 0))))
-
+  (define top-env
+  (Env (list (binding 'true (numV 1))
+             (binding 'false (numV 0))
+             (binding '+ (primOp '+ 2))
+             (binding '- (primOp '- 2))
+             (binding '* (primOp '* 2))
+             (binding '/ (primOp '/ 2))
+             (binding '<= (primOp '<= 2))
+             (binding 'equal? (primOp 'equal? 2))
+             (binding 'error (primOp 'error 1)))))
 
 ;; TOP-INTERP
 ;;-----------------------------------------------------------------------------------
@@ -47,7 +54,8 @@
   (match e
     [(numC n) (numV n)]
     [(idC s) (lookup s env)]
-    [(ifleq0? test then else)
+    [(stringC str) #;TODO]
+    [(ifleq0? test then else) #;TODO turn this into general if
      (if (<= (cast (interp test fds) Real) 0)
          (interp then fds)
          (interp else fds))]
@@ -98,13 +106,24 @@
     [(list 'ifleq0? test then else)                      ;; ifleq0?
      (ifleq0? (parse test) (parse then) (parse else))]
     [(and (? symbol? s) (? symbol-valid s)) (idC s)]     ;; idC
-    [(list 'anon  ] ;; {anon {id ...} Expr} TODO
+
+    [(list 'anon (list (and (? symbol? s)
+                            (? symbol-valid s)) ...) ': exp arg ...) ;; NEEDS WORK
+     (appC (lamC (list s) (parse exp))
+           (list arg))]
+
     [other (error 'parse "OAZO Syntax error in ~e" other)]))
 
 
 ;; HELPER FUNCTIONS
 ;;-----------------------------------------------------------------------------------
 
+;; Helper to determine if the id is valid for an idC
+(define (valid-id [s : Symbol]) : Boolean
+  (match s
+    [(or '? 'else: 'with 'as 'blam) #f]
+    [other #t]))
+    
 ;; Helper to determine if the symbol is valid for an idC
 (define (symbol-valid [s : Symbol]) : Boolean
   (match s
