@@ -11,10 +11,10 @@
 (struct numC    ([n : Real])                                   #:transparent)
 (struct idC     ([s : Symbol])                                 #:transparent)
 (struct appC    ([exp : ExprC] [args : (Listof ExprC)])        #:transparent)
-(struct ifleq0? ([test : ExprC] [then : ExprC] [else : ExprC]) #:transparent)
+(struct ifC     ([test : ExprC] [then : ExprC] [else : ExprC]) #:transparent)
 (struct stringC ([str : String])                               #:transparent)
 (struct lamC    ([args : (Listof Symbol)] [body : ExprC])      #:transparent)
-(define-type ExprC (U numC idC appC ifleq0? stringC lamC))
+(define-type ExprC (U numC idC appC ifC stringC lamC))
 
 ;; Bindings
 (struct binding ([name : Symbol] [val : Value])                #:transparent)
@@ -112,24 +112,23 @@
     [(? real? n) (numC n)]                                 ;; numC
     [(list (? real? n)) (numC n)]                          ;; numC in {12}
     [(and (? symbol? s) (? valid-id s)) (idC s)]           ;; idC
-
+    [(? string? str) (stringC str)]                        ;; stringC
+    [(list 'if test 'then then 'else else)                 ;; ifC
+     (ifC (parse test) (parse then) (parse else))]         
     [(list 'anon syms ': body args ...)                    ;; lamC
      (if (and (list? syms) (all-symbol? syms))
          (lamC (cast syms(Listof Symbol)) (parse body))
          (error 'parse "OAZO Error: Expected a list of symbols for parameters"))]
-    
     [(list func exps ...)                                  ;; appC
      (appC (parse func) (map (lambda ([exps : Sexp])
                     (parse exps)) exps))]
-    
-
-
     [other (error 'parse "OAZO Syntax error in ~e" other)]))
 
 
 ;; Tests
 (check-equal? (parse '{12}) (numC 12))
 (check-equal? (parse 'x) (idC 'x))
+(check-equal? (parse "string") (stringC "string"))
 (check-equal? (parse '{anon {x y} : {+ x y}})
               
               (lamC (list 'x 'y)
