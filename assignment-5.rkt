@@ -23,7 +23,7 @@
 (define extend-env cons)
 
 ;; Values
-(struct numV    ([n : Number])                                 #:transparent)
+(struct numV    ([n : Real])                                   #:transparent)
 (struct boolV   ([b : Boolean])                                #:transparent)
 (struct closeV  ([arg : Symbol] [body : ExprC] [env : Env])    #:transparent)
 (struct primopV ([sym : Symbol])                               #:transparent)
@@ -91,7 +91,7 @@
 ;; Helper that looks up a value in an environment
 (define (lookup [for : Symbol] [env : Env]) : Number
     (match env
-      ['() (error 'lookup "name not found: ~e" for)]
+      ['() (error 'lookup "OAZO ERROR: name not found: ~e" for)]
       [(cons (binding name val) r) (cond
                     [(symbol=? for name) val]
                     [else (lookup for r)])]))
@@ -100,7 +100,7 @@
 ;;-----------------------------------------------------------------------------------
 (define (get-primop [op : primopV] [env : Env]) : Value
   (cond
-    [(> (length (Env-lst env)) 2) (error 'get-primop "OUAZO illegal number of operands for primitave type: ~e" env)] 
+    [(> (length (Env-lst env)) 2) (error 'get-primop "OAZO ERROR:  illegal number of operands for primitave type: ~e" env)] 
     [else
      (match (binding-val (first (Env-lst env)))
        [(? numV?) (match (binding-val (first(rest (Env-lst env))))
@@ -111,7 +111,7 @@
                        [(primopV '*)(numV(* (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
                        [(primopV '/)(numV(/ (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
                        [(primopV '<=)(boolV(<= (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))] 
-                       [else (error 'get_primop "OUAZO Not a number: ~e" (binding-val (first(rest (Env-lst env)))))])])])]))  
+                       [else (error 'get_primop "OAZO ERROR: Not a number: ~e" (binding-val (first(rest (Env-lst env)))))])])])]))  
 
 ;; Get-primop Tests
 (check-equal? (get-primop (primopV '+) (Env (list (binding 'x (numV 1)) (binding 'y (numV 2))))) (numV 3))
