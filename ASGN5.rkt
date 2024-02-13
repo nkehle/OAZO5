@@ -8,113 +8,105 @@
 ;; OAZO Data Definitions
 ;;-----------------------------------------------------------------------------------
 ;; Expressions
-(struct numC ([n : Real])                                      #:transparent)
-(struct idC ([s : Symbol])                                     #:transparent)
-(struct appC ([exp : ExprC] [args : (Listof ExprC)])           #:transparent)
+(struct numC    ([n : Real])                                   #:transparent)
+(struct idC     ([s : Symbol])                                 #:transparent)
+(struct appC    ([exp : ExprC] [args : (Listof ExprC)])        #:transparent)
+(struct ifC     ([test : ExprC] [then : ExprC] [else : ExprC]) #:transparent)
 (struct stringC ([str : String])                               #:transparent)
-(struct binopC ([op : Symbol][l : ExprC] [r : ExprC])          #:transparent)
-(struct ifleq0? ([test : ExprC] [then : ExprC] [else : ExprC]) #:transparent)
-(struct lamC ([args : (Listof Symbol)] [body : ExprC])         #:transparent)
-(define-type ExprC (U numC idC appC binopC ifleq0? stringC lamC))
+(struct lamC    ([args : (Listof Symbol)] [body : ExprC])      #:transparent)
+(define-type ExprC (U numC idC appC ifC stringC lamC))
 
 ;; Bindings
-(struct binding  ([name : Symbol] [val : Value])  #:transparent)
-(struct Env ([lst : (Listof binding)])  #:transparent)
-(define mt-env '())
+(struct binding ([name : Symbol] [val : Value])                #:transparent)
+(struct Env     ([lst : (Listof binding)])                     #:transparent)
+(define mt-env  '())
 (define extend-env cons)
 
 ;; Values
-(struct numV ([n : Real])                                 #:transparent) ;;<= ONlY works with reals i guess
-(struct boolV ([b : Boolean])                               #:transparent)
-(struct closeV ([arg : Symbol] [body : ExprC] [env : Env])  #:transparent)
-(struct primopV ([op : Symbol])                             #:transparent)
-(define-type Value (U numV boolV closeV primopV))
+(struct numV    ([n : Real])                                   #:transparent)
+(struct boolV   ([b : Boolean])                                #:transparent)
+(struct closeV  ([arg : (Listof Symbol)] [body : ExprC] [env : Env])    #:transparent)
+(struct primopV ([sym : Symbol])                               #:transparent)
+(define-type Value (U numV closeV boolV primopV))
 
 ;; Top Level Environment
-;; Top Level Environment
-
 (define top-env
   (Env (list (binding 'true (boolV #t))
              (binding 'false (boolV #f))
-             (binding '+ (primopV '+ ))
-             (binding '- (primopV '- ))
+             (binding '+ (primopV '+))
+             (binding '- (primopV '-))
              (binding '* (primopV '*))
              (binding '/ (primopV '/))
              (binding '<= (primopV '<=))
              (binding 'equal? (primopV 'equal?))
              (binding 'error (primopV 'error)))))
 
-;; Function Definition
-;;(struct fdC ([name : Symbol] [arg : (Listof Symbol)] [body : ExprC]) #:transparent)
-
-
 ;; TOP-INTERP
 ;;-----------------------------------------------------------------------------------
 ;; Interprets the entirely parsed program
-#;(define (top-interp [program : Sexp]): String
-  (serialize (parse-prog program))) ;; TODO add serialize
-
-
-;; INTERP-FNS
-;;-----------------------------------------------------------------------------------
-;; Inteprets the function named main from the func definitons
-#;(define (interp-fns [funs : (Listof fdC)]) : Real
-  (let ([main-fd (get-fundef 'main funs)])
-    (define body (fdC-body main-fd))
-    (interp body top-env funs)))
+(define (top-interp [s : Sexp]) : String
+  (serialize (interp (parse s) top-env)))
 
 
 ;; INTERP
 ;;-----------------------------------------------------------------------------------
 ;; Inteprets the given expression using list of funs to resolve appC's
-(define (interp [a : ExprC] [env : Env]) : Value
-  (match a
+(define (interp [e : ExprC] [env : Env]) : Value
+  (match e
     [(numC n) (numV n)]
-    [(idC s) (lookup s env)]  ;;Is this where the '+ '- '/ ... operators would be found?
-    [(ifleq0? test then else)
-     (if (<= (cast (interp test env) Real) 0)
+    [(idC s) (lookup s env)]  ;; Is this where the '+ '- '/ ... operators would be found?
+    #;[(stringC str)         #;TODO]
+    #;[(ifC test then else)    #;TODO
+     (if (interp test env))
          (interp then env)
-         (interp else env))]
- 
+         (interp else env)]
+    
     ;;So before we interp the appC there is no closure, only the current environment
-    [(appC f args) (define ([define f-value (interp f env)]) ;;Current env
-                     ;;(cond
-                       ;;[(equal? f-value primopV) (primopV f-value env)]) ;;Probably don't use a cond here
-                     (interp (closeV-body f-value)               ;;Current env
+    [(appC f args) (define f-value : Value (interp f env)) ;;Current env
+                     (match f-value
+                       [(? closeV?) ((interp (closeV-body f-value)               ;;Current env
                              (extend-env (binding (closeV-arg f-value)
                                                   (map(lambda ([a : ExprC]) (interp a env)) args)) ;;possiblhy map interp
-                                         env)))] 
-    [(lamC a b) (closeV a b env)]
-
-    
-    #;[(appC f args) (define fd (get-fundef f fds))
-                   (interp (sub-many args (fdC-arg fd) (fdC-body fd) fds) fds)]))
+                                         env)))]
+                       [(? primopV?) (get-primop f-value env)]
+                       [else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])]  
+    [(lamC a body) (closeV a body env)]))
+ 
 ;;interp tests
-;;(check-equal? (interp (appC(lamC(list 'x)(appC(idC '+)(list(idC 'x)(numC 1))))(list(numC 5) top-env)) 6)
+(check-equal? (interp (appC(lamC(list 'x)
+                                (appC(idC '+)(list(idC 'x)(numC 1))))
+                           (list(numC 5))) top-env) 6)
 
-;; Turns obbjects into string literals
+;; SERIALIZE
+;;-----------------------------------------------------------------------------------
+;; Turns objects into string literals
 (define (serialize [val : Any]) : String
   (match val
     [(? numV? n) (number->string (numV-n n))]
     [(? closeV? s) (format "~a" s)]
-    [#t "true"] 
+    [#t "true"]
     [#f "false"]
     #;[(? procedure? p) "#<procedure>"]
     #;[(? primop? p) "#<primop>"]
-    [else (error 'serialize "Unsupported value: ~v" val)]))
+    [else (error 'serialize "OAZO Unsupported value: ~v" val)]))
 
 
+;; LOOKUP
+;;-----------------------------------------------------------------------------------
 ;; Helper that looks up a value in an environment
 (define (lookup [for : Symbol] [env : Env]) : Value
     (match env
-      ['() (error 'lookup "OUAZO name not found: ~e" for)]
+      ['() (error 'lookup "OAZO ERROR: name not found: ~e" for)]
       [(cons (binding name val) r) (cond
                     [(symbol=? for name) val]
                     [else (lookup for r)])]))
 
-(define (get_primop [op : primopV] [env : Env]) : Value
+;; GET-PRIMOP
+;;-----------------------------------------------------------------------------------
+;;Need equal and error operations!
+(define (get-primop [op : primopV] [env : Env]) : Value
   (cond
-    [(> (length (Env-lst env)) 2) (error 'get_primop "OUAZO illegal number of operands for primitave type: ~e" env)] 
+    [(> (length (Env-lst env)) 2) (error 'get-primop "OAZO ERROR:  illegal number of operands for primitave type: ~e" env)] 
     [else
      (match (binding-val (first (Env-lst env)))
        [(? numV?) (match (binding-val (first(rest (Env-lst env))))
@@ -124,80 +116,113 @@
                        [(primopV '-)(numV(- (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
                        [(primopV '*)(numV(* (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
                        [(primopV '/)(numV(/ (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
-                        
                        [(primopV '<=)(boolV(<= (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))] 
-                       [else (error 'get_primop "OUAZO Not a number: ~e" (binding-val (first(rest (Env-lst env)))))])])])]))  
+                       [else (error 'get-primop "OAZO ERROR: Not a number: ~e" (binding-val (first(rest (Env-lst env)))))])])])]))  
 
-(check-equal? (get_primop (primopV '+) (Env (list (binding 'x (numV 1)) (binding 'y (numV 2))))) (numV 3))
-(check-equal? (get_primop (primopV '-) (Env (list (binding 'x (numV 4)) (binding 'y (numV 2))))) (numV 2)) 
-(check-equal? (get_primop (primopV '*) (Env (list (binding 'x (numV 3)) (binding 'y (numV 2))))) (numV 6))
-(check-equal? (get_primop (primopV '/) (Env (list (binding 'x (numV 10)) (binding 'y (numV 2))))) (numV 5))
-(check-equal? (get_primop (primopV '<=) (Env (list (binding 'x (numV 10)) (binding 'y (numV 2))))) (boolV #f))
-;; PARSE-PROG 
+;; Get-primop Tests
+(check-equal? (get-primop (primopV '+) (Env (list (binding 'x (numV 1)) (binding 'y (numV 2))))) (numV 3))
+(check-equal? (get-primop (primopV '-) (Env (list (binding 'x (numV 4)) (binding 'y (numV 2))))) (numV 2)) 
+(check-equal? (get-primop (primopV '*) (Env (list (binding 'x (numV 3)) (binding 'y (numV 2))))) (numV 6))
+(check-equal? (get-primop (primopV '/) (Env (list (binding 'x (numV 10)) (binding 'y (numV 2))))) (numV 5))
+(check-equal? (get-primop (primopV '<=) (Env (list (binding 'x (numV 10)) (binding 'y (numV 2))))) (boolV #f))
+
+
+;; HELPER FUNCTIONS
 ;;-----------------------------------------------------------------------------------
-;; Takes in the whole program and parses the function definitions and outputs
-;; the list of all fdC's
-#;(define (parse-prog [s : Sexp]) : (Listof fdC)
+;; Helper function to check if all elements of a list are symbols
+(define (all-symbol-and-valid? [lst : (Listof Sexp)]) : Boolean
+  (andmap (lambda (s)
+            (and (symbol? s) (valid-id s)))
+          lst))
+
+;; Helper to determine if the id is valid for an idC
+(define (valid-id [s : Symbol]) : Boolean
   (match s
-    ['() '()]
-    [(cons f r) (cons (parse-fundef f) (parse-prog r))] 
-    [other (error 'parse-prog "OAZO Syntax Error: Function with invalid syntax in ~e" other)]))
-
-
-;; PARSE-FUNDEF
-;;-----------------------------------------------------------------------------------
-;; Takes in an Sexp and parses it into and function definition for the OAZO language
-#;(define (parse-fundef [code : Sexp]) : fdC
-  (match code
-    [(list 'func (list 'main) ': body)
-     (fdC 'main '() (parse body))]
-    [(list 'func (list (and (? symbol? name) (? symbol-valid name)) args ...) ': body)
-     (if (list-of-symbols? args) 
-         (fdC name (cast args (Listof Symbol)) (parse body))
-         (error 'parse-func-def "OAZO Syntax Error: ~e" code))]
-    [else (error 'parse-func-def "OAZO Syntax Error: ~e" code)]))
+    [(or '? 'else: 'with 'as 'blam) #f]
+    [other #t]))
 
 
 ;; PARSE
 ;;-----------------------------------------------------------------------------------
 ;; Takes in a Sexp of concrete syntax and outputs the AST for the OAZO language
 ;; should only be in the form of the above defined data types
-#;(define (parse [code : Sexp]) : ExprC
+(define (parse [code : Sexp]) : ExprC
   (match code
-    [(? real? n) (numC n)]                               ;; numC
-    [(list (? real? n)) (numC n)]                        ;; numC in {12}
-    [(list (and (? symbol? op) (? operand-valid s)) l r) ;; biopC
-     (binopC s (parse l) (parse r))]
-    
-    [(list (and (? symbol? s) (? symbol-valid s)) exp ...)  ;; appC
-     (appC s (map (lambda ([exp : Sexp])
-                    (parse exp)) exp))]
+    [(? real? n) (numC n)]                                 ;; numC
+    [(list (? real? n)) (numC n)]                          ;; numC in {12}
+    [(and (? symbol? s) (? valid-id s)) (idC s)]           ;; idC
+    [(? string? str) (stringC str)]                        ;; stringC
+    [(list 'if test 'then then 'else else)                 ;; ifC
+     (ifC (parse test) (parse then) (parse else))]
 
-    [(list 'ifleq0? test then else)                      ;; ifleq0?
-     (ifleq0? (parse test) (parse then) (parse else))]
-    [(and (? symbol? s) (? symbol-valid s)) (idC s)]     ;; idC
-    ;;[(list 'anon ) ] ;; {anon {id ...} Expr} TODO
+    #;[(list 'let (list (and (? symbol? s) (? valid-id s)) '<- exp) ... body) ;;  {let [id <- Expr] ... Expr} 
+     (appC let-helper lst)]          	                   
+
+    [(list 'anon syms ': body args ...)                    ;; lamC
+     (if (and (list? syms) (all-symbol-and-valid? syms))
+         (lamC (cast syms(Listof Symbol)) (parse body))
+         (error 'parse "OAZO Error: Expected a list of symbols for parameters"))]
+    
+    [(list func exps ...)                                  ;; appC
+     (appC (parse func) (map (lambda ([exps : Sexp])
+                    (parse exps)) exps))]
+    
     [other (error 'parse "OAZO Syntax error in ~e" other)]))
 
 
-;; HELPER FUNCTIONS
-;;-----------------------------------------------------------------------------------
+;; Tests
+(check-equal? (parse '{12}) (numC 12))
+(check-equal? (parse 'x) (idC 'x))
+(check-equal? (parse "string") (stringC "string"))
+(check-equal? (parse '{anon {x y} : {+ x y}})
+              
+              (lamC (list 'x 'y)
+                    (appC (idC '+)
+                          (list (idC 'x) (idC 'y)))))
 
+(check-equal? (parse '{{anon {x y} : {+ x y}} 5 7})
+              
+              (appC (lamC (list 'x 'y)
+                          (appC (idC '+)
+                                (list (idC 'x) (idC 'y))))
+              (list (numC 5)
+                    (numC 7))))
+
+(check-equal? (parse '{f 4}) (appC (idC 'f) (list(numC 4))))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;; OLD CODE
+;;-----------------------------------------------------------------------------------
+    
 ;; Helper to determine if the symbol is valid for an idC
-(define (symbol-valid [s : Symbol]) : Boolean
+#;(define (symbol-valid [s : Symbol]) : Boolean
   (match s
     [(or '+ '- '* '/ 'ifleq0? 'else: 'ifleq0? ': 'func) #f]
     [other #t]))
 
 ;; Helper to determine if its a valid operand
-(define (operand-valid [s : Symbol]) : Boolean
+#;(define (operand-valid [s : Symbol]) : Boolean
   (match s
     [(or '+ '- '* '/) #t]
     [ other #f]))
 
 ;; Helper to check if a list of symbols is valid
-(: list-of-symbols? (Any -> Boolean))
-(define (list-of-symbols? lst)
+#;(define (list-of-symbols? lst)
   (and (list? lst)
        (andmap symbol? lst)
        (andmap symbol-valid lst)))
@@ -209,6 +234,14 @@
     [(cons? fds) (cond
                    [(equal? n (fdC-name (first fds))) (first fds)]
                    [else (get-fundef n (rest fds))])]))
+
+
+#;[(list (and (? symbol? op) (? operand-valid s)) l r) ;; biopC
+     (binopC s (parse l) (parse r))]
+    
+    #;[(list 'ifleq0? test then else)                      ;; ifleq0?
+     (ifleq0? (parse test) (parse then) (parse else))]
+    
 
 ;; Helper thats used to subsitutue values in place for identifiers inside of ExprC's
 #;(define (sub [what : ExprC] [for : Symbol] [in : ExprC]) : ExprC
@@ -235,7 +268,49 @@
             (sub-many rest-args rest-syms
                       (sub (numC (interp arg fds)) sym in) fds)])])))
 
+;; INTERP-FNS
+;;-----------------------------------------------------------------------------------
+;; Inteprets the function named main from the func definitons
+#;(define (interp-fns [funs : (Listof fdC)]) : Real
+  (let ([main-fd (get-fundef 'main funs)])
+    (define body (fdC-body main-fd))
+    (interp body funs)))
 
+
+
+;; PARSE-PROG 
+;;-----------------------------------------------------------------------------------
+;; Takes in the whole program and parses the function definitions and outputs
+;; the list of all fdC's
+#;(define (parse-prog [s : Sexp]) : (Listof fdC)
+  (match s
+    ['() '()]
+    [(cons f r) (cons (parse-fundef f) (parse-prog r))] 
+    [other (error 'parse-prog "OAZO Syntax Error: Function with invalid syntax in ~e" other)]))
+
+
+;; PARSE-FUNDEF
+;;-----------------------------------------------------------------------------------
+;; Takes in an Sexp and parses it into and function definition for the OAZO language
+#;(define (parse-fundef [code : Sexp]) : fdC
+  (match code
+    [(list 'func (list 'main) ': body)
+     (fdC 'main '() (parse body))]
+    [(list 'func (list (and (? symbol? name) (? symbol-valid name)) args ...) ': body)
+     (if (list-of-symbols? args) 
+         (fdC name (cast args (Listof Symbol)) (parse body))
+         (error 'parse-func-def "OAZO Syntax Error: ~e" code))]
+    [else (error 'parse-func-def "OAZO Syntax Error: ~e" code)]))
+
+
+#;[(binopC op a b) (match op
+                       ['+ (+ (interp a fds) (interp b fds))]
+                       ['- (- (interp a fds) (interp b fds))]
+                       ['* (* (interp a fds) (interp b fds))]
+                       ['/ (let ([right-val (interp b fds)])
+                             (if (not (= right-val 0))
+                                 (/ (interp a fds) right-val)
+                                 (error 'interp "OAZO Arithmetic Error: Division by zero")))])]
 ;; TESTS
 ;;-----------------------------------------------------------------------------------
 #|
