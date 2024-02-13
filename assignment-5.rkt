@@ -94,8 +94,10 @@
 ;;-----------------------------------------------------------------------------------
 
 ;; Helper function to check if all elements of a list are symbols
-(define (all-symbol? [lst : (Listof Any)]) : Boolean
-  (andmap symbol? lst))
+(define (all-symbol-and-valid? [lst : (Listof Sexp)]) : Boolean
+  (andmap (lambda (s)
+            (and (symbol? s) (valid-id s)))
+          lst))
 
 ;; Helper to determine if the id is valid for an idC
 (define (valid-id [s : Symbol]) : Boolean
@@ -116,7 +118,7 @@
     [(list 'if test 'then then 'else else)                 ;; ifC
      (ifC (parse test) (parse then) (parse else))]         
     [(list 'anon syms ': body args ...)                    ;; lamC
-     (if (and (list? syms) (all-symbol? syms))
+     (if (and (list? syms) (all-symbol-and-valid? syms))
          (lamC (cast syms(Listof Symbol)) (parse body))
          (error 'parse "OAZO Error: Expected a list of symbols for parameters"))]
     [(list func exps ...)                                  ;; appC
