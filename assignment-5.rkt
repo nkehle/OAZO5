@@ -54,20 +54,21 @@
 (define (interp [e : ExprC] [env : Env]) : Value
   (match e
     [(numC n) (numV n)]
-    [(idC s) (lookup s env)]
+    [(idC s) (lookup s env)]  ;; Is this where the '+ '- '/ ... operators would be found?
     #;[(stringC str)         #;TODO]
-    [(ifC test then else)  #;TODO
+    [(ifC test then else)    #;TODO
      (if (interp test env))
          (interp then env)
          (interp else env)]
     
     ;;So before we interp the appC there is no closure, only the current environment
-    [(appC f args) (define ??? ([define f-value (interp f env)]) ;;Current env
+    [(appC f args) (define ([define f-value (interp f env)]) ;;Current env
+                     ;;(cond
+                       ;;[(equal? f-value primopV) (primopV f-value env)]) ;;Probably don't use a cond here
                      (interp (closeV-body f-value)               ;;Current env
-                           (extend-env (binding (closeV-arg f-value)
-                         (map(lambda ([a : ExprC]) (interp a env)) args)) ;;possiblhy map interp
-                                       env)))]
-
+                             (extend-env (binding (closeV-arg f-value)
+                                                  (map(lambda ([a : ExprC]) (interp a env)) args)) ;;possiblhy map interp
+                                         env)))] 
     [(lamC a b) (closeV a b env)]))
 
 
@@ -94,6 +95,30 @@
       [(cons (binding name val) r) (cond
                     [(symbol=? for name) val]
                     [else (lookup for r)])]))
+
+;; GET-PRIMOP
+;;-----------------------------------------------------------------------------------
+(define (get-primop [op : primopV] [env : Env]) : Value
+  (cond
+    [(> (length (Env-lst env)) 2) (error 'get-primop "OUAZO illegal number of operands for primitave type: ~e" env)] 
+    [else
+     (match (binding-val (first (Env-lst env)))
+       [(? numV?) (match (binding-val (first(rest (Env-lst env))))
+                    [(? numV?)
+                     (match op
+                       [(primopV '+)(numV(+ (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
+                       [(primopV '-)(numV(- (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
+                       [(primopV '*)(numV(* (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
+                       [(primopV '/)(numV(/ (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
+                       [(primopV '<=)(boolV(<= (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))] 
+                       [else (error 'get_primop "OUAZO Not a number: ~e" (binding-val (first(rest (Env-lst env)))))])])])]))  
+
+;; Get-primop Tests
+(check-equal? (get-primop (primopV '+) (Env (list (binding 'x (numV 1)) (binding 'y (numV 2))))) (numV 3))
+(check-equal? (get-primop (primopV '-) (Env (list (binding 'x (numV 4)) (binding 'y (numV 2))))) (numV 2)) 
+(check-equal? (get-primop (primopV '*) (Env (list (binding 'x (numV 3)) (binding 'y (numV 2))))) (numV 6))
+(check-equal? (get-primop (primopV '/) (Env (list (binding 'x (numV 10)) (binding 'y (numV 2))))) (numV 5))
+(check-equal? (get-primop (primopV '<=) (Env (list (binding 'x (numV 10)) (binding 'y (numV 2))))) (boolV #f))
 
 
 ;; HELPER FUNCTIONS
