@@ -10,7 +10,7 @@
 ;; Expressions
 (struct numC ([n : Real])                                      #:transparent)
 (struct idC ([s : Symbol])                                     #:transparent)
-(struct appC ([exp : ExprC] [args : (Listof ExprC)])             #:transparent)
+(struct appC ([exp : ExprC] [args : (Listof ExprC)])           #:transparent)
 (struct stringC ([str : String])                               #:transparent)
 (struct binopC ([op : Symbol][l : ExprC] [r : ExprC])          #:transparent)
 (struct ifleq0? ([test : ExprC] [then : ExprC] [else : ExprC]) #:transparent)
@@ -18,31 +18,31 @@
 (define-type ExprC (U numC idC appC binopC ifleq0? stringC lamC))
 
 ;; Bindings
-(struct binding  ([name : Symbol] [val : Real]))
-(struct Env ([lst : (Listof binding)]))
+(struct binding  ([name : Symbol] [val : Value])  #:transparent)
+(struct Env ([lst : (Listof binding)])  #:transparent)
 (define mt-env '())
 (define extend-env cons)
 
 ;; Values
-(struct numV ([n : Number]))
-(struct boolV ([b : Boolean]))
-(struct closeV ([arg : Symbol] [body : ExprC] [env : Env]))
-struct primopV ([op : Symbol]))
-(define-type Value (U numV boolV closeV))
+(struct numV ([n : Real])                                 #:transparent) ;;<= ONlY works with reals i guess
+(struct boolV ([b : Boolean])                               #:transparent)
+(struct closeV ([arg : Symbol] [body : ExprC] [env : Env])  #:transparent)
+(struct primopV ([op : Symbol])                             #:transparent)
+(define-type Value (U numV boolV closeV primopV))
 
 ;; Top Level Environment
 ;; Top Level Environment
+
 (define top-env
-  (define top-env
   (Env (list (binding 'true (boolV #t))
              (binding 'false (boolV #f))
-             (binding '+ (primOpV '+ ))
-             (binding '- (primOpV '- ))
-             (binding '* (primOpV '*))
-             (binding '/ (primOpV '/))
-             (binding '<= (primOp '<=))
-             (binding 'equal? (primOp 'equal?))
-             (binding 'error (primOp 'error)))))
+             (binding '+ (primopV '+ ))
+             (binding '- (primopV '- ))
+             (binding '* (primopV '*))
+             (binding '/ (primopV '/))
+             (binding '<= (primopV '<=))
+             (binding 'equal? (primopV 'equal?))
+             (binding 'error (primopV 'error)))))
 
 ;; Function Definition
 ;;(struct fdC ([name : Symbol] [arg : (Listof Symbol)] [body : ExprC]) #:transparent)
@@ -51,14 +51,14 @@ struct primopV ([op : Symbol]))
 ;; TOP-INTERP
 ;;-----------------------------------------------------------------------------------
 ;; Interprets the entirely parsed program
-(define (top-interp [program : Sexp]): String
+#;(define (top-interp [program : Sexp]): String
   (serialize (parse-prog program))) ;; TODO add serialize
 
 
 ;; INTERP-FNS
 ;;-----------------------------------------------------------------------------------
 ;; Inteprets the function named main from the func definitons
-(define (interp-fns [funs : (Listof fdC)]) : Real
+#;(define (interp-fns [funs : (Listof fdC)]) : Real
   (let ([main-fd (get-fundef 'main funs)])
     (define body (fdC-body main-fd))
     (interp body top-env funs)))
@@ -70,38 +70,34 @@ struct primopV ([op : Symbol]))
 (define (interp [a : ExprC] [env : Env]) : Value
   (match a
     [(numC n) (numV n)]
-    [(idC s) (lookup s env)]
+    [(idC s) (lookup s env)]  ;;Is this where the '+ '- '/ ... operators would be found?
     [(ifleq0? test then else)
      (if (<= (cast (interp test env) Real) 0)
          (interp then env)
          (interp else env))]
-    [(binopC op a b) (match op
-                       ['+ (+ (interp a env) (interp b env))]
-                       ['- (- (interp a env) (interp b env))]
-                       ['* (* (interp a env) (interp b env))]
-                       ['/ (let ([right-val (interp b)])
-                             (if (not (= right-val 0))
-                                 (/ (interp a env fds) right-val)
-                                 (error 'interp "OAZO Arithmetic Error: Division by zero")))])]
+ 
     ;;So before we interp the appC there is no closure, only the current environment
-    [(appC f args) (define ??? ([define f-value (interp f env)]) ;;Current env
+    [(appC f args) (define ([define f-value (interp f env)]) ;;Current env
+                     ;;(cond
+                       ;;[(equal? f-value primopV) (primopV f-value env)]) ;;Probably don't use a cond here
                      (interp (closeV-body f-value)               ;;Current env
-                           (extend-env (binding (closeV-arg f-value)
-                         (map(lambda ([a : ExprC]) (interp a env)) args)) ;;possiblhy map interp
-                                       env)))]
+                             (extend-env (binding (closeV-arg f-value)
+                                                  (map(lambda ([a : ExprC]) (interp a env)) args)) ;;possiblhy map interp
+                                         env)))] 
     [(lamC a b) (closeV a b env)]
 
     
     #;[(appC f args) (define fd (get-fundef f fds))
                    (interp (sub-many args (fdC-arg fd) (fdC-body fd) fds) fds)]))
-
+;;interp tests
+;;(check-equal? (interp (appC(lamC(list 'x)(appC(idC '+)(list(idC 'x)(numC 1))))(list(numC 5) top-env)) 6)
 
 ;; Turns obbjects into string literals
 (define (serialize [val : Any]) : String
   (match val
     [(? numV? n) (number->string (numV-n n))]
     [(? closeV? s) (format "~a" s)]
-    [#t "true"]
+    [#t "true"] 
     [#f "false"]
     #;[(? procedure? p) "#<procedure>"]
     #;[(? primop? p) "#<primop>"]
@@ -109,18 +105,39 @@ struct primopV ([op : Symbol]))
 
 
 ;; Helper that looks up a value in an environment
-(define (lookup [for : Symbol] [env : Env]) : Number
+(define (lookup [for : Symbol] [env : Env]) : Value
     (match env
-      ['() (error 'lookup "name not found: ~e" for)]
+      ['() (error 'lookup "OUAZO name not found: ~e" for)]
       [(cons (binding name val) r) (cond
                     [(symbol=? for name) val]
                     [else (lookup for r)])]))
 
+(define (get_primop [op : primopV] [env : Env]) : Value
+  (cond
+    [(> (length (Env-lst env)) 2) (error 'get_primop "OUAZO illegal number of operands for primitave type: ~e" env)] 
+    [else
+     (match (binding-val (first (Env-lst env)))
+       [(? numV?) (match (binding-val (first(rest (Env-lst env))))
+                    [(? numV?)
+                     (match op
+                       [(primopV '+)(numV(+ (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
+                       [(primopV '-)(numV(- (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
+                       [(primopV '*)(numV(* (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
+                       [(primopV '/)(numV(/ (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
+                        
+                       [(primopV '<=)(boolV(<= (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))] 
+                       [else (error 'get_primop "OUAZO Not a number: ~e" (binding-val (first(rest (Env-lst env)))))])])])]))  
+
+(check-equal? (get_primop (primopV '+) (Env (list (binding 'x (numV 1)) (binding 'y (numV 2))))) (numV 3))
+(check-equal? (get_primop (primopV '-) (Env (list (binding 'x (numV 4)) (binding 'y (numV 2))))) (numV 2)) 
+(check-equal? (get_primop (primopV '*) (Env (list (binding 'x (numV 3)) (binding 'y (numV 2))))) (numV 6))
+(check-equal? (get_primop (primopV '/) (Env (list (binding 'x (numV 10)) (binding 'y (numV 2))))) (numV 5))
+(check-equal? (get_primop (primopV '<=) (Env (list (binding 'x (numV 10)) (binding 'y (numV 2))))) (boolV #f))
 ;; PARSE-PROG 
 ;;-----------------------------------------------------------------------------------
 ;; Takes in the whole program and parses the function definitions and outputs
 ;; the list of all fdC's
-(define (parse-prog [s : Sexp]) : (Listof fdC)
+#;(define (parse-prog [s : Sexp]) : (Listof fdC)
   (match s
     ['() '()]
     [(cons f r) (cons (parse-fundef f) (parse-prog r))] 
@@ -130,7 +147,7 @@ struct primopV ([op : Symbol]))
 ;; PARSE-FUNDEF
 ;;-----------------------------------------------------------------------------------
 ;; Takes in an Sexp and parses it into and function definition for the OAZO language
-(define (parse-fundef [code : Sexp]) : fdC
+#;(define (parse-fundef [code : Sexp]) : fdC
   (match code
     [(list 'func (list 'main) ': body)
      (fdC 'main '() (parse body))]
@@ -145,7 +162,7 @@ struct primopV ([op : Symbol]))
 ;;-----------------------------------------------------------------------------------
 ;; Takes in a Sexp of concrete syntax and outputs the AST for the OAZO language
 ;; should only be in the form of the above defined data types
-(define (parse [code : Sexp]) : ExprC
+#;(define (parse [code : Sexp]) : ExprC
   (match code
     [(? real? n) (numC n)]                               ;; numC
     [(list (? real? n)) (numC n)]                        ;; numC in {12}
@@ -186,7 +203,7 @@ struct primopV ([op : Symbol]))
        (andmap symbol-valid lst)))
 
 ;; Helper for searching through the list of funs
-(define (get-fundef [n : Symbol] [fds : (Listof fdC)]) : fdC
+#;(define (get-fundef [n : Symbol] [fds : (Listof fdC)]) : fdC
   (cond
     [(empty? fds) (error 'get-fundef "OAZO Error: Reference to undefined function ~e" n)]
     [(cons? fds) (cond
