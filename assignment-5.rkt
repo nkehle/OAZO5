@@ -23,9 +23,9 @@
 (define extend-env cons)
 
 ;; Values
-(struct numV   ([n : Number])                                  #:transparent)
-(struct boolV ([b : Boolean])                                  #:transparent)
-(struct closeV ([arg : Symbol] [body : ExprC] [env : Env])     #:transparent)
+(struct numV    ([n : Number])                                 #:transparent)
+(struct boolV   ([b : Boolean])                                #:transparent)
+(struct closeV  ([arg : Symbol] [body : ExprC] [env : Env])    #:transparent)
 (struct primopV ([sym : Symbol])                               #:transparent)
 (define-type Value (U numV closeV boolV primopV))
 
@@ -44,31 +44,35 @@
 ;; TOP-INTERP
 ;;-----------------------------------------------------------------------------------
 ;; Interprets the entirely parsed program
-#;(define (top-interp [s : Sexp]) : String
+(define (top-interp [s : Sexp]) : String
   (serialize (interp (parse s) top-env)))
 
 
 ;; INTERP
 ;;-----------------------------------------------------------------------------------
 ;; Inteprets the given expression using list of funs to resolve appC's
-#;(define (interp [e : ExprC] [env : Env]) : Value
+(define (interp [e : ExprC] [env : Env]) : Value
   (match e
     [(numC n) (numV n)]
     [(idC s) (lookup s env)]
-    [(stringC str) #;TODO]
-    [(ifleq0? test then else) #;TODO turn this into general if
-     (if (<= (cast (interp test fds) Real) 0)
-         (interp then fds)
-         (interp else fds))]
+    #;[(stringC str)         #;TODO]
+    [(ifC test then else)  #;TODO
+     (if (interp test env))
+         (interp then env)
+         (interp else env)]
     
-    [(appC f args) (define fd (get-fundef f fds))
-                   (interp (fdC-body fd)
-                           (extend-env (binding (fdC-arg fd)
-                                                (interp a env fds) fds) mt-env))]
-    
+    ;;So before we interp the appC there is no closure, only the current environment
+    [(appC f args) (define ??? ([define f-value (interp f env)]) ;;Current env
+                     (interp (closeV-body f-value)               ;;Current env
+                           (extend-env (binding (closeV-arg f-value)
+                         (map(lambda ([a : ExprC]) (interp a env)) args)) ;;possiblhy map interp
+                                       env)))]
+
     [(lamC a b) (closeV a b env)]))
 
- 
+
+;; SERIALIZE
+;;-----------------------------------------------------------------------------------
 ;; Turns objects into string literals
 (define (serialize [val : Any]) : String
   (match val
@@ -81,6 +85,8 @@
     [else (error 'serialize "Unsupported value: ~v" val)]))
 
 
+;; LOOKUP
+;;-----------------------------------------------------------------------------------
 ;; Helper that looks up a value in an environment
 (define (lookup [for : Symbol] [env : Env]) : Number
     (match env
@@ -92,7 +98,6 @@
 
 ;; HELPER FUNCTIONS
 ;;-----------------------------------------------------------------------------------
-
 ;; Helper function to check if all elements of a list are symbols
 (define (all-symbol-and-valid? [lst : (Listof Sexp)]) : Boolean
   (andmap (lambda (s)
@@ -105,6 +110,7 @@
     [(or '? 'else: 'with 'as 'blam) #f]
     [other #t]))
 
+
 ;; PARSE
 ;;-----------------------------------------------------------------------------------
 ;; Takes in a Sexp of concrete syntax and outputs the AST for the OAZO language
@@ -116,14 +122,20 @@
     [(and (? symbol? s) (? valid-id s)) (idC s)]           ;; idC
     [(? string? str) (stringC str)]                        ;; stringC
     [(list 'if test 'then then 'else else)                 ;; ifC
-     (ifC (parse test) (parse then) (parse else))]         
+     (ifC (parse test) (parse then) (parse else))]
+
+    #;[(list 'let (list (and (? symbol? s) (? valid-id s)) '<- exp) ... body) ;;  {let [id <- Expr] ... Expr} 
+     (appC let-helper lst)]          	                   
+
     [(list 'anon syms ': body args ...)                    ;; lamC
      (if (and (list? syms) (all-symbol-and-valid? syms))
          (lamC (cast syms(Listof Symbol)) (parse body))
          (error 'parse "OAZO Error: Expected a list of symbols for parameters"))]
+    
     [(list func exps ...)                                  ;; appC
      (appC (parse func) (map (lambda ([exps : Sexp])
                     (parse exps)) exps))]
+    
     [other (error 'parse "OAZO Syntax error in ~e" other)]))
 
 
@@ -148,24 +160,38 @@
 (check-equal? (parse '{f 4}) (appC (idC 'f) (list(numC 4))))
 
 
-;; HELPER FUNCTIONS
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;; OLD CODE
 ;;-----------------------------------------------------------------------------------
     
 ;; Helper to determine if the symbol is valid for an idC
-(define (symbol-valid [s : Symbol]) : Boolean
+#;(define (symbol-valid [s : Symbol]) : Boolean
   (match s
     [(or '+ '- '* '/ 'ifleq0? 'else: 'ifleq0? ': 'func) #f]
     [other #t]))
 
 ;; Helper to determine if its a valid operand
-(define (operand-valid [s : Symbol]) : Boolean
+#;(define (operand-valid [s : Symbol]) : Boolean
   (match s
     [(or '+ '- '* '/) #t]
     [ other #f]))
 
 ;; Helper to check if a list of symbols is valid
-(: list-of-symbols? (Any -> Boolean))
-(define (list-of-symbols? lst)
+#;(define (list-of-symbols? lst)
   (and (list? lst)
        (andmap symbol? lst)
        (andmap symbol-valid lst)))
