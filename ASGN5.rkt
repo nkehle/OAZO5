@@ -20,7 +20,6 @@
 (struct binding ([name : Symbol] [val : Value])                #:transparent)
 (struct Env     ([lst : (Listof binding)])                     #:transparent)
 (define mt-env  '())
-(define extend-env cons)
 
 ;; Values
 (struct numV    ([n : Real])                                   #:transparent)
@@ -29,7 +28,7 @@
 (struct primopV ([sym : Symbol])                               #:transparent)
 (define-type Value (U numV closeV boolV primopV))
 
-;; Top Level Environment
+;; Top Level Environment 
 (define top-env
   (Env (list (binding 'true (boolV #t))
              (binding 'false (boolV #f))
@@ -41,13 +40,49 @@
              (binding 'equal? (primopV 'equal?))
              (binding 'error (primopV 'error)))))
 
+;;Helper Funcs
+;;-----------------------------------------------------------------------------
+;; LOOKUP
+;;-----------------------------------------------------------------------------------
+;; Helper that looks up a value in an environment
+(define (lookup [for : Symbol] [env : Env]) : Value
+    (match env
+      ['() (error 'lookup "OAZO ERROR: name not found: ~e" for)]
+      [(cons (binding name val) r) (cond
+                    [(symbol=? for name) val]
+                    [else (lookup for r)])]))
+
+;;-----------------------------------------------------------------------------------
+;;Extends an environment
+;;Returns an environment given two environments
+(define (extend-env [env1 : (Listof binding)] [env2 : (Listof binding)]) : Env
+  (Env (append env1 env2))) 
+
+(check-equal? (extend-env (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1))) (list (binding 't (boolV #f)) (binding 'b (numV 2)) (binding 'dd (primopV '+))))
+              (Env (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1))(binding 't (boolV #f)) (binding 'b (numV 2)) (binding 'dd (primopV '+)))))
+;;Binding helper function 
+;;returns a list of bindings given a list of Symbols and list of values
+(define (bind [sym : (Listof Symbol)] [val : (Listof Value)]) : (Listof binding)
+  (match sym
+    ['() '()]
+    [(cons s rest-s)
+     (match val
+       ['() (error 'bind "OAZO Error: Mismatched number of arguments and symbols")] 
+       [(cons v rest-v) (cons (binding s v) (bind rest-s rest-v))])]))
+
+(check-equal? (bind (list 'x 'y 'z) (list (numV 1) (numV 2) (numV 3))) (list (binding 'x (numV 1)) (binding 'y (numV 2)) (binding 'z (numV 3))))
+(check-equal? (bind (list 't 'b 'dd) (list (boolV #f) (numV 2) (primopV '+))) (list (binding 't (boolV #f)) (binding 'b (numV 2)) (binding 'dd (primopV '+))))
+(check-equal? (bind (list 'a) (list (closeV (list 'v 'c 'd) (numC 2) (Env (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1)))))))
+                    (list (binding 'a (closeV (list 'v 'c 'd) (numC 2) (Env (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1))))))))
+
+
 ;; TOP-INTERP
 ;;-----------------------------------------------------------------------------------
 ;; Interprets the entirely parsed program
 (define (top-interp [s : Sexp]) : String
   (serialize (interp (parse s) top-env)))
 
-
+ 
 ;; INTERP
 ;;-----------------------------------------------------------------------------------
 ;; Inteprets the given expression using list of funs to resolve appC's
@@ -64,10 +99,10 @@
     ;;So before we interp the appC there is no closure, only the current environment
     [(appC f args) (define f-value : Value (interp f env)) ;;Current env
                      (match f-value
-                       [(? closeV?) ((interp (closeV-body f-value)               ;;Current env
-                             (extend-env (binding (closeV-arg f-value)
+                       [(? closeV?) (interp (closeV-body f-value)               ;;Current env
+                             (extend-env (bind (closeV-arg f-value)
                                                   (map(lambda ([a : ExprC]) (interp a env)) args)) ;;possiblhy map interp
-                                         env)))]
+                                         (Env-lst env)))]   
                        [(? primopV?) (get-primop f-value env)]
                        [else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])]  
     [(lamC a body) (closeV a body env)]))
@@ -75,7 +110,8 @@
 ;;interp tests
 (check-equal? (interp (appC(lamC(list 'x)
                                 (appC(idC '+)(list(idC 'x)(numC 1))))
-                           (list(numC 5))) top-env) 6)
+                           (list(numC 5))) top-env) 6) 
+
 
 ;; SERIALIZE
 ;;-----------------------------------------------------------------------------------
@@ -91,19 +127,11 @@
     [else (error 'serialize "OAZO Unsupported value: ~v" val)]))
 
 
-;; LOOKUP
-;;-----------------------------------------------------------------------------------
-;; Helper that looks up a value in an environment
-(define (lookup [for : Symbol] [env : Env]) : Value
-    (match env
-      ['() (error 'lookup "OAZO ERROR: name not found: ~e" for)]
-      [(cons (binding name val) r) (cond
-                    [(symbol=? for name) val]
-                    [else (lookup for r)])]))
+
 
 ;; GET-PRIMOP
 ;;-----------------------------------------------------------------------------------
-;;Need equal and error operations!
+;;Need equal and error operations! 
 (define (get-primop [op : primopV] [env : Env]) : Value
   (cond
     [(> (length (Env-lst env)) 2) (error 'get-primop "OAZO ERROR:  illegal number of operands for primitave type: ~e" env)] 
