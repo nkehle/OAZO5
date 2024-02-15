@@ -12,34 +12,35 @@
 (struct idC     ([s : Symbol])                                 #:transparent)
 (struct appC    ([exp : ExprC] [args : (Listof ExprC)])        #:transparent)
 (struct ifC     ([test : ExprC] [then : ExprC] [else : ExprC]) #:transparent)
-(struct stringC ([str : String])                               #:transparent)
+(struct strC    ([str : String])                               #:transparent)
 (struct lamC    ([args : (Listof Symbol)] [body : ExprC])      #:transparent)
-(define-type ExprC (U numC idC appC ifC stringC lamC))
+(define-type ExprC (U numC idC appC ifC strC lamC))
 
 ;; Bindings
 (struct binding ([name : Symbol] [val : Value])                #:transparent)
-(struct Env     ([lst : (Listof binding)])                     #:transparent)
+(define-type Env (Listof binding))
 (define mt-env  '())
-(define extend-env cons)
+#;(define extend-env cons)
 
 ;; Values
 (struct numV    ([n : Real])                                   #:transparent)
 (struct boolV   ([b : Boolean])                                #:transparent)
+(struct strV    ([str : String])                               #:transparent)
 (struct closeV  ([arg : (Listof Symbol)] [body : ExprC] [env : Env]) #:transparent)
 (struct primopV ([sym : Symbol])                               #:transparent)
-(define-type Value (U numV closeV boolV primopV))
+(define-type Value (U numV closeV boolV primopV strV))
 
 ;; Top Level Environment
 (define top-env
-  (Env (list (binding 'true (boolV #t))
-             (binding 'false (boolV #f))
-             (binding '+ (primopV '+))
-             (binding '- (primopV '-))
-             (binding '* (primopV '*))
-             (binding '/ (primopV '/))
-             (binding '<= (primopV '<=))
-             (binding 'equal? (primopV 'equal?))
-             (binding 'error (primopV 'error)))))
+  (list (binding 'true (boolV #t))
+        (binding 'false (boolV #f))
+        (binding '+ (primopV '+))
+        (binding '- (primopV '-))
+        (binding '* (primopV '*))
+        (binding '/ (primopV '/))
+        (binding '<= (primopV '<=))
+        (binding 'equal? (primopV 'equal?))
+        (binding 'error (primopV 'error))))
 
 
 ;; HELPER FUNCTIONS
@@ -58,6 +59,27 @@
     [(or '? 'else: 'with 'as 'blam) #f]
     [other #t]))
 
+;;Returns an environment given two environments
+(define (extend-env [env1 : (Listof binding)] [env2 : (Listof binding)]) : Env
+  (append env1 env2)) 
+
+(check-equal? (extend-env (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1))) (list (binding 't (boolV #f)) (binding 'b (numV 2)) (binding 'dd (primopV '+))))
+              (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1))(binding 't (boolV #f)) (binding 'b (numV 2)) (binding 'dd (primopV '+))))
+
+
+;; returns a list of bindings given a list of Symbols and list of values
+(define (bind [sym : (Listof Symbol)] [val : (Listof Value)]) : (Listof binding)
+  (match sym
+    ['() '()]
+    [(cons s rest-s)
+     (match val
+       ['() (error 'bind "OAZO Error: Mismatched number of arguments and symbols")] 
+       [(cons v rest-v) (cons (binding s v) (bind rest-s rest-v))])]))
+
+(check-equal? (bind (list 'x 'y 'z) (list (numV 1) (numV 2) (numV 3))) (list (binding 'x (numV 1)) (binding 'y (numV 2)) (binding 'z (numV 3))))
+(check-equal? (bind (list 't 'b 'dd) (list (boolV #f) (numV 2) (primopV '+))) (list (binding 't (boolV #f)) (binding 'b (numV 2)) (binding 'dd (primopV '+))))
+(check-equal? (bind (list 'a) (list (closeV (list 'v 'c 'd) (numC 2) (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1))))))
+                    (list (binding 'a (closeV (list 'v 'c 'd) (numC 2) (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1)))))))
 
 ;; SERIALIZE
 ;;-----------------------------------------------------------------------------------
@@ -84,7 +106,9 @@
                                      [else (lookup for r)])]))
 
 ;; Lookup Tests
-(check-equal? (lookup 'true top-env) #t)
+(check-equal? (lookup 'true top-env) (boolV #t))
+(check-exn #rx"OAZO" (lambda ()(lookup 'not-here top-env)))
+
 
 ;; PARSE-BINDING-SYMS
 ;;-----------------------------------------------------------------------------------
@@ -99,9 +123,11 @@
 
 ;; Parse-Binding-Syms Tests
 (define bds1 '{{x <- 5} {y <- 7}})
+(define bds2 '{1 <- 5})
 (check-equal? (parse-binding-syms bds1)
               (list 'x 'y))
-
+(check-exn #rx"OAZO" (lambda()
+                       (parse-binding-syms bds2)))
 
 
 ;; PARSE-BINDING-ARGS
@@ -116,35 +142,37 @@
         [else (error 'parse-binding-args "OAZO: Invalid binding: ~a" binding)]))))
 
 ;; Parse-Binding-Args Tests
-(define bds2 '{{x <- 5} {y <- 7}})
-(check-equal? (parse-binding-args bds2)
+(define bds3 '{{x <- 5} {y <- 7}})
+(define bds4 '{x <- q})
+(check-equal? (parse-binding-args bds3)
               (list (numC 5) (numC 7)))
-
+(check-exn #rx"OAZO" (lambda()
+                       (parse-binding-syms bds4)))
 
 
 ;; GET-PRIMOP
 ;;-----------------------------------------------------------------------------------
 (define (get-primop [op : primopV] [env : Env]) : Value
   (cond
-    [(> (length (Env-lst env)) 2) (error 'get-primop "OAZO ERROR:  illegal number of operands for primitave type: ~e" env)] 
+    [(> (length env) 2) (error 'get-primop "OAZO ERROR:  illegal number of operands for primitave type: ~e" env)] 
     [else
-     (match (binding-val (first (Env-lst env)))
-       [(? numV?) (match (binding-val (first(rest (Env-lst env))))
+     (match (binding-val (first env))
+       [(? numV?) (match (binding-val (first(rest env)))
                     [(? numV?)
                      (match op
-                       [(primopV '+)(numV(+ (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
-                       [(primopV '-)(numV(- (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
-                       [(primopV '*)(numV(* (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
-                       [(primopV '/)(numV(/ (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))]
-                       [(primopV '<=)(boolV(<= (numV-n(cast (binding-val (first (Env-lst env))) numV)) (numV-n (cast (binding-val (first(rest (Env-lst env)))) numV))))] 
-                       [else (error 'get_primop "OAZO ERROR: Not a number: ~e" (binding-val (first(rest (Env-lst env)))))])])])]))  
+                       [(primopV '+)(numV(+ (numV-n(cast (binding-val (first env)) numV)) (numV-n (cast (binding-val (first(rest env))) numV))))]
+                       [(primopV '-)(numV(- (numV-n(cast (binding-val (first env)) numV)) (numV-n (cast (binding-val (first(rest env))) numV))))]
+                       [(primopV '*)(numV(* (numV-n(cast (binding-val (first env)) numV)) (numV-n (cast (binding-val (first(rest env))) numV))))]
+                       [(primopV '/)(numV(/ (numV-n(cast (binding-val (first env)) numV)) (numV-n (cast (binding-val (first(rest env))) numV))))]
+                       [(primopV '<=)(boolV(<= (numV-n(cast (binding-val (first env)) numV)) (numV-n (cast (binding-val (first(rest env))) numV))))] 
+                       [else (error 'get_primop "OAZO ERROR: Not a number: ~e" (binding-val (first(rest env))))])])])]))  
 
 ;; Get-primop Tests
-(check-equal? (get-primop (primopV '+) (Env (list (binding 'x (numV 1)) (binding 'y (numV 2))))) (numV 3))
-(check-equal? (get-primop (primopV '-) (Env (list (binding 'x (numV 4)) (binding 'y (numV 2))))) (numV 2)) 
-(check-equal? (get-primop (primopV '*) (Env (list (binding 'x (numV 3)) (binding 'y (numV 2))))) (numV 6))
-(check-equal? (get-primop (primopV '/) (Env (list (binding 'x (numV 10)) (binding 'y (numV 2))))) (numV 5))
-(check-equal? (get-primop (primopV '<=) (Env (list (binding 'x (numV 10)) (binding 'y (numV 2))))) (boolV #f))
+(check-equal? (get-primop (primopV '+)  (list (binding 'x (numV 1)) (binding 'y (numV 2)))) (numV 3))
+(check-equal? (get-primop (primopV '-)  (list (binding 'x (numV 4)) (binding 'y (numV 2)))) (numV 2))
+(check-equal? (get-primop (primopV '*)  (list (binding 'x (numV 3)) (binding 'y (numV 2)))) (numV 6))
+(check-equal? (get-primop (primopV '/)  (list (binding 'x (numV 10)) (binding 'y (numV 2)))) (numV 5))
+(check-equal? (get-primop (primopV '<=) (list (binding 'x (numV 10)) (binding 'y (numV 2)))) (boolV #f))
 
 
 
@@ -160,36 +188,35 @@
 ;; Inteprets the given expression using list of funs to resolve appC's
 (define (interp [e : ExprC] [env : Env]) : Value
   (match e
-    [(numC n) (numV n)]
-    [(idC s) (lookup s env)]  ;; Is this where the '+ '- '/ ... operators would be found?
-    #;[(stringC str)           #;TODO]
-    [(ifC test then els)
+    [(numC n) (numV n)]          ;; numC
+    [(idC s) (lookup s env)]     ;; idC
+    [(strC str) (strV str)]      ;; strC
+    [(ifC test then else)        ;; ifC
      (define test-result (interp test env))
      (cond [(boolV? test-result)
-            (cond [(boolV-b test-result) (interp els env)]
-                  [else (interp then env)])]
-           [else (error 'interp "If test was not a boolean in expression: ~e" e)])]
-    [other (error 'interp "all other forms unimplemented... :(")]
+            (cond [(boolV-b test-result) (interp then env)]
+                  [else (interp else env)])]
+           [else (error 'interp "OAZO: Test was not a boolean expression: ~e" e)])]
 
     ;;So before we interp the appC there is no closure, only the current environment
-    #;[(appC f args) (define f-value (interp f env)) ;;Current env
-                   ;;(cond
-                   ;;[(equal? f-value primopV) (primopV f-value env)]) ;;Probably don't use a cond here
-                   (interp (closeV-body f-value)               ;;Current env
-                           (extend-env (binding (closeV-arg f-value)
-                                                (map(lambda ([a : ExprC]) (interp a env)) args)) ;;possibly map interp
-                                       env))]
-
-    [(lamC args body) (closeV args body env)]))  ;; interp the args
+    [(appC f args) (define f-value : Value (interp f env)) ;;Current env
+                   (match f-value
+                     [(? closeV?) (interp (closeV-body f-value)               ;;Current env
+                                          (extend-env (bind (closeV-arg f-value)
+                                                            (map(lambda ([a : ExprC]) (interp a env)) args)) ;;possiblhy map interp
+                                                      env))]   
+                     [(? primopV?) (get-primop f-value env)]
+                     [else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])]  
+    [(lamC a body) (closeV a body env)]))
 
 
 
 ;; Interp tests
+(check-equal? (interp (ifC (idC 'true) (numC 1) (numC 2)) top-env) (numV 1))
 
-#;(check-equal? (interp (ifC (idC 'true) (numC 1) (numC 2)) top-env)1)
+(check-equal? (interp ((idC '+) (numC 1) (numC 1)) top-env) (numV 2))
 
 ;;  {{ anon {x} : {+ x 1}} 5}
-
 #;(check-equal? (interp (appC (lamC (list 'x)
                                   (appC (idC '+)
                                      (list (idC 'x) (numC 1))))
@@ -205,7 +232,7 @@
     [(? real? n) (numC n)]                                 ;; numC
     [(list (? real? n)) (numC n)]                          ;; numC in {12}
     [(and (? symbol? s) (? valid-id s)) (idC s)]           ;; idC
-    [(? string? str) (stringC str)]                        ;; stringC
+    [(? string? str) (strC str)]                        ;; stringC
     [(list 'if test 'then then 'else else)                 ;; ifC
      (ifC (parse test) (parse then) (parse else))]
     
@@ -229,7 +256,7 @@
 ;; Parse Tests
 (check-equal? (parse '{12}) (numC 12))
 (check-equal? (parse 'x) (idC 'x))
-(check-equal? (parse "string") (stringC "string"))
+(check-equal? (parse "string") (strC "string"))
 
 (check-equal? (parse '{anon {x y} : {+ x y}})
               
