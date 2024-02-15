@@ -68,7 +68,7 @@
                      [(? closeV?) (interp (closeV-body f-value)               ;;Current env
                                           (extend-env (bind (closeV-arg f-value)
                                                             (map(lambda ([a : ExprC]) (interp a env)) args))
-                                                      env))]
+                                                      top-env))]
                      [(? primopV?) (apply-primop f-value args env)]
                      [else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])]
     
@@ -77,25 +77,28 @@
 
 ;; Takes a primop an list of args and the environment and ouputs the value 
 (define (apply-primop [primop : primopV] [args : (Listof ExprC)] [env : Env]) : Value
-  (let ([arg-values (map (λ ([arg : ExprC])
-                            (match (interp arg env)
-                              [(numV n) n]
-                              [else (error 'apply-primop "OAZO ERROR: Non-numeric argument")])) args)])
-    (match arg-values
-      [(cons f r)
-       (match primop
-         [(primopV '+)
-          (numV (apply + (map (λ ([arg : Real]) arg) arg-values)))] ;; for many adds
-         [(primopV '-)
-          (numV (- f (first r)))]
-         [(primopV '*)
-          (numV (* f (first r)))]
-         [(primopV '/)
-          (numV (/ f (first r)))]
-         [(primopV '<=)
-          (boolV (<= f (first r)))]
-         [(primopV 'equal?)
-          (boolV (equal? (serialize f) (serialize (first r))))])])))
+  (cond
+    [(> (length args) 2) (error 'apply "OAZO too many values for primitave operation ~v" args)]
+    [else
+     (let ([arg-values (map (λ ([arg : ExprC])
+                              (match (interp arg env)
+                                [(numV n) n]
+                                [else (error 'apply-primop "OAZO ERROR: Non-numeric argument")])) args)])
+       (match arg-values
+         [(cons f r)
+          (match primop
+            [(primopV '+)
+             (numV (apply + (map (λ ([arg : Real]) arg) arg-values)))] ;; for many adds
+            [(primopV '-)
+             (numV (- f (first r)))]
+            [(primopV '*)
+             (numV (* f (first r)))]
+            [(primopV '/)
+             (numV (/ f (first r)))]
+            [(primopV '<=)
+             (boolV (<= f (first r)))]
+            [(primopV 'equal?)
+             (boolV (equal? (serialize f) (serialize (first r))))])]))])) 
 
 
 
@@ -137,12 +140,11 @@
   (match val
     [(? numV? n) (number->string (numV-n n))]
     [(? real? n) (number->string n)]
-    [(? closeV? s) (format "~a" s)]
+    [(? closeV? s) "#<procedure>"]
     [#t "true"]
     [#f "false"]
-    [(? procedure? p) "#<procedure>"]
     [(? primopV? p) "#<primop>"]
-    [else (error 'serialize "Unsupported value: ~v" val)]))
+    [else (error 'serialize "OAZO Unsupported value: ~v" val)]))
 
 
 ;; LOOKUP
@@ -215,7 +217,6 @@
                                 {y <- 7}
                                 {+ x y}}) "12")
 
-
 (check-equal? (top-interp '{let {z <- {+ 7 8}}
                                 {y <- 5}
                                 {+ z y}}) "20")
@@ -228,13 +229,24 @@
 (check-equal? (top-interp '{let {f <- {anon {a} : {+ a 4}}}
                                 {f 1}}) "5")
 
+(check-equal? (top-interp '{let {f <- {anon {a} : {+ a a}}}
+                                {g <- {anon {b} : {* b b}}}
+                                {f {g 2} {g 2}}}) "8")
 
-#;(check-equal? (top-interp '{let {f <- {anon {a} : {g 1}}}
+;; Recurisve Test
+#;(check-equal? (top-interp '{let {f <- {anon {x} : {if {<= x 10} then {f {+ x 1}} else {-1}}}}
+                                {f 1}}) "-1")
+
+
+(check-exn #rx"OAZO" (lambda () (top-interp '{let {f <- {anon {a} : {g 1}}}
                                 {g <- {anon {b} : {+ a b}}}
-                                {f 5}}))
-#;(top-interp '{let {f <- {anon {a} : {+ {g 4} a}}}
-                                {g <- {anon {b : {* a b}}}}
-                                {f 2}})
+                                {g 5}}) "6"))
+
+(check-exn #rx"OAZO" (lambda () (top-interp
+                                 '{let {f <- {anon {x} : {+ x 1}}}
+                                       {y <- {anon {z} : {f 4}}}
+                                       {y 3}})))
+
 
 
 ;; Interp tests
@@ -273,6 +285,12 @@
                                 (list (idC 'x) (idC 'y))))
               (list (numC 5)
                     (numC 7))))
+
+
+(check-equal? (parse '{if {<= x 1} then 1 else -1})
+              
+              (ifC (appC (idC '<=) (list (idC 'x) (numC 1))) (numC 1) (numC -1)))
+
 
 
 (check-equal? (parse '{{anon {x y} : {+ x y}} 5 7})
@@ -322,6 +340,36 @@
 
 
 
+;; Error coverage
+(check-exn #rx"OAZO" (lambda() (interp (appC (lamC (list 'x 'y 'z)
+                                  (appC (idC '+)
+                                     (list (idC 'x) (idC 'y) (idC 'z))))
+                            (list (numC 5) (numC 6) (numC 1))) top-env)))
+
+(check-exn #rx"OAZO" (lambda()(interp (ifC (numC 5) (numC 1) (numC 2)) top-env)))
+
+(check-exn #rx"OAZO" (lambda()(interp (appC (idC '+) (list (strC "oops") (numC 1))) top-env)))
+
+
+;;Serialize
+(check-equal? (serialize (numV 1)) "1")
+(check-equal? (serialize 1) "1")
+(check-equal? (serialize #t) "true")
+(check-equal? (serialize #f) "false")
+
+;;(check-equal? (serialize (interp (numC 1) top-env)) "#<procedure>")
+(check-equal? (serialize (primopV '+)) "#<primop>")  
+
+(check-equal? (serialize (closeV (list 'x 'y) (appC (idC '+) (list (numC 1) (numC 1))) (list (binding 'x (numV 4)) (binding 'y (numV 2))))) "#<procedure>")
+(check-exn #rx"OAZO" (lambda()(serialize "string")))
+
+;;helper
+(check-equal? (bind (list 'x 'y 'z) (list (numV 1) (numV 2) (numV 3))) (list (binding 'x (numV 1)) (binding 'y (numV 2)) (binding 'z (numV 3))))
+(check-equal? (bind (list 't 'b 'dd) (list (boolV #f) (numV 2) (primopV '+))) (list (binding 't (boolV #f)) (binding 'b (numV 2)) (binding 'dd (primopV '+))))
+(check-equal? (bind (list 'a) (list (closeV (list 'v 'c 'd) (numC 2) (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1))))))
+                    (list (binding 'a (closeV (list 'v 'c 'd) (numC 2) (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1)))))))
+(check-exn #rx"OAZO" (lambda()(bind '(a) '()))) 
+(check-equal? (valid-id 'else:) #f) 
 
 
 
