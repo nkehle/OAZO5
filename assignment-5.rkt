@@ -25,7 +25,7 @@
 ;; Values
 (struct numV    ([n : Real])                                   #:transparent)
 (struct boolV   ([b : Boolean])                                #:transparent)
-(struct closeV  ([arg : Symbol] [body : ExprC] [env : Env])    #:transparent)
+(struct closeV  ([arg : (Listof Symbol)] [body : ExprC] [env : Env]) #:transparent)
 (struct primopV ([sym : Symbol])                               #:transparent)
 (define-type Value (U numV closeV boolV primopV))
 
@@ -41,35 +41,22 @@
              (binding 'equal? (primopV 'equal?))
              (binding 'error (primopV 'error)))))
 
-;; TOP-INTERP
-;;-----------------------------------------------------------------------------------
-;; Interprets the entirely parsed program
-(define (top-interp [s : Sexp]) : String
-  (serialize (interp (parse s) top-env)))
 
-
-;; INTERP
+;; HELPER FUNCTIONS
 ;;-----------------------------------------------------------------------------------
-;; Inteprets the given expression using list of funs to resolve appC's
-(define (interp [e : ExprC] [env : Env]) : Value
-  (match e
-    [(numC n) (numV n)]
-    [(idC s) (lookup s env)]  ;; Is this where the '+ '- '/ ... operators would be found?
-    #;[(stringC str)         #;TODO]
-    [(ifC test then else)    #;TODO
-     (if (interp test env))
-         (interp then env)
-         (interp else env)]
-    
-    ;;So before we interp the appC there is no closure, only the current environment
-    [(appC f args) (define ([define f-value (interp f env)]) ;;Current env
-                     ;;(cond
-                       ;;[(equal? f-value primopV) (primopV f-value env)]) ;;Probably don't use a cond here
-                     (interp (closeV-body f-value)               ;;Current env
-                             (extend-env (binding (closeV-arg f-value)
-                                                  (map(lambda ([a : ExprC]) (interp a env)) args)) ;;possiblhy map interp
-                                         env)))] 
-    [(lamC a b) (closeV a b env)]))
+;; Helper function to check if all elements of a list are symbols
+
+;; Helper function to check if all elements of a list are symbols
+(define (all-symbol-and-valid? [lst : (Listof Sexp)]) : Boolean
+  (andmap (lambda (s)
+            (and (symbol? s) (valid-id s)))
+          lst))
+
+;; Helper to determine if the id is valid for an idC
+(define (valid-id [s : Symbol]) : Boolean
+  (match s
+    [(or '? 'else: 'with 'as 'blam) #f]
+    [other #t]))
 
 
 ;; SERIALIZE
@@ -89,12 +76,48 @@
 ;; LOOKUP
 ;;-----------------------------------------------------------------------------------
 ;; Helper that looks up a value in an environment
-(define (lookup [for : Symbol] [env : Env]) : Number
+(define (lookup [for : Symbol] [env : Env]) : Value
     (match env
       ['() (error 'lookup "OAZO ERROR: name not found: ~e" for)]
       [(cons (binding name val) r) (cond
                     [(symbol=? for name) val]
                     [else (lookup for r)])]))
+
+;; PARSE-BINDING-SYMS
+;;-----------------------------------------------------------------------------------
+;; Takes a list of bindings as an Sexp and turns it into a list of symbol
+(define (parse-binding-syms [bindings : (Listof Sexp)]) : (Listof Symbol)
+  (begin
+    (for/list ([binding (in-list bindings)])
+      (match binding
+        [(list sym '<- _) (if (symbol? sym) sym
+                              (error 'parse-bindings-syms "OAZO: Invalid binding"))]
+        [else (error 'parse-binding-syms "OAZO: Invalid binding: ~a" binding)]))))
+
+;; Parse-Binding-Syms Tests
+(define bds1 '{{x <- 5} {y <- 7}})
+(check-equal? (parse-binding-syms bds1)
+              (list 'x 'y))
+
+
+
+;; PARSE-BINDING-ARGS
+;;-----------------------------------------------------------------------------------
+;; Takes a list of bindings as an Sexp and turns it into a list of symbol
+(define (parse-binding-args [bindings : (Listof Sexp)]) : (Listof numC)
+  (begin
+    (for/list ([binding (in-list bindings)])
+      (match binding
+        [(list _ '<- val) (if (real? val) (numC val)
+                              (error 'parse-bindings-args "OAZO: Invalid binding"))]
+        [else (error 'parse-binding-args "OAZO: Invalid binding: ~a" binding)]))))
+
+;; Parse-Binding-Args Tests
+(define bds2 '{{x <- 5} {y <- 7}})
+(check-equal? (parse-binding-args bds2)
+              (list (numC 5) (numC 7)))
+
+
 
 ;; GET-PRIMOP
 ;;-----------------------------------------------------------------------------------
@@ -121,19 +144,53 @@
 (check-equal? (get-primop (primopV '<=) (Env (list (binding 'x (numV 10)) (binding 'y (numV 2))))) (boolV #f))
 
 
-;; HELPER FUNCTIONS
-;;-----------------------------------------------------------------------------------
-;; Helper function to check if all elements of a list are symbols
-(define (all-symbol-and-valid? [lst : (Listof Sexp)]) : Boolean
-  (andmap (lambda (s)
-            (and (symbol? s) (valid-id s)))
-          lst))
 
-;; Helper to determine if the id is valid for an idC
-(define (valid-id [s : Symbol]) : Boolean
-  (match s
-    [(or '? 'else: 'with 'as 'blam) #f]
-    [other #t]))
+;; TOP-INTERP
+;;-----------------------------------------------------------------------------------
+;; Interprets the entirely parsed program
+#;(define (top-interp [s : Sexp]) : String
+  (serialize (interp (parse s) top-env)))
+
+
+;; INTERP
+;;-----------------------------------------------------------------------------------
+;; Inteprets the given expression using list of funs to resolve appC's
+(define (interp [e : ExprC] [env : Env]) : Value
+  (match e
+    [(numC n) (numV n)]
+    [(idC s) (lookup s env)]  ;; Is this where the '+ '- '/ ... operators would be found?
+    #;[(stringC str)           #;TODO]
+    [(ifC test then els)
+     (define test-result (interp test env))
+     (cond [(boolV? test-result)
+            (cond [(boolV-b test-result) (interp els env)]
+                  [else (interp then env)])]
+           [else (error 'interp "If test was not a boolean in expression: ~e" e)])]
+    [other (error 'interp "all other forms unimplemented... :(")]
+
+    ;;So before we interp the appC there is no closure, only the current environment
+    #;[(appC f args) (define f-value (interp f env)) ;;Current env
+                   ;;(cond
+                   ;;[(equal? f-value primopV) (primopV f-value env)]) ;;Probably don't use a cond here
+                   (interp (closeV-body f-value)               ;;Current env
+                           (extend-env (binding (closeV-arg f-value)
+                                                (map(lambda ([a : ExprC]) (interp a env)) args)) ;;possibly map interp
+                                       env))]
+
+    [(lamC args body) (closeV args body env)]))  ;; interp the args
+
+
+
+;; Interp tests
+
+(check-equal? (interp (ifC (idC 'true) (numC 1) (numC 2)) top-env)1)
+
+;;  {{ anon {x} : {+ x 1}} 5}
+
+#;(check-equal? (interp (appC (lamC (list 'x)
+                                  (appC (idC '+)
+                                     (list (idC 'x) (numC 1))))
+                            (list (numC 5))) top-env) 6)
 
 
 ;; PARSE
@@ -148,9 +205,11 @@
     [(? string? str) (stringC str)]                        ;; stringC
     [(list 'if test 'then then 'else else)                 ;; ifC
      (ifC (parse test) (parse then) (parse else))]
-
-    #;[(list 'let (list (and (? symbol? s) (? valid-id s)) '<- exp) ... body) ;;  {let [id <- Expr] ... Expr} 
-     (appC let-helper lst)]          	                   
+    
+    [(list 'let bindings ... body)                         ;; letC
+     (appC (lamC (parse-binding-syms (cast bindings (Listof Sexp))) 
+                 (parse body))
+           (parse-binding-args (cast bindings (Listof Sexp))))]
 
     [(list 'anon syms ': body args ...)                    ;; lamC
      (if (and (list? syms) (all-symbol-and-valid? syms))
@@ -164,15 +223,28 @@
     [other (error 'parse "OAZO Syntax error in ~e" other)]))
 
 
-;; Tests
+;; Parse Tests
 (check-equal? (parse '{12}) (numC 12))
 (check-equal? (parse 'x) (idC 'x))
 (check-equal? (parse "string") (stringC "string"))
+
 (check-equal? (parse '{anon {x y} : {+ x y}})
               
               (lamC (list 'x 'y)
                     (appC (idC '+)
                           (list (idC 'x) (idC 'y)))))
+
+
+(check-equal? (parse '{let {x <- 5}
+                           {y <- 7}
+                        {+ x y}})
+              
+              (appC (lamC (list 'x 'y)
+                          (appC (idC '+)
+                                (list (idC 'x) (idC 'y))))
+              (list (numC 5)
+                    (numC 7))))
+
 
 (check-equal? (parse '{{anon {x y} : {+ x y}} 5 7})
               
@@ -183,6 +255,9 @@
                     (numC 7))))
 
 (check-equal? (parse '{f 4}) (appC (idC 'f) (list(numC 4))))
+
+
+
 
 
 
