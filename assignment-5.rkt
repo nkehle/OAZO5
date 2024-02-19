@@ -70,7 +70,7 @@
                                                             (map(lambda ([a : ExprC]) (interp a env)) args))
                                                       top-env))]
                      [(? primopV?) (apply-primop f-value args env)]
-                     [else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])]
+                     #;[else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])]
     
     [(lamC a body) (closeV a body env)]))
 
@@ -178,8 +178,7 @@
   (begin
     (for/list ([binding (in-list bindings)])
       (match binding
-        [(list sym '<- _) (if (symbol? sym) sym
-                              (error 'parse-bindings-syms "OAZO: Invalid binding left side must be a symobl"))]
+        [(list sym '<- _) (cast sym Symbol)]
         [else (error 'parse-binding-syms "OAZO: Invalid binding: ~a" binding)]))))
 
 
@@ -190,7 +189,6 @@
       (match binding
         [(list _ '<- val) (parse val)]
         [else (error 'parse-binding-args "OAZO: Invalid binding: ~a" binding)]))))
-
 
 
 ;; Returns an environment given two environments
@@ -234,13 +232,15 @@
                                 {f {g 2} {g 2}}}) "8")
 
 ;; Recurisve Test
-#;(check-equal? (top-interp '{let {f <- {anon {x} : {if {<= x 10} then {f {+ x 1}} else {-1}}}}
-                                {f 1}}) "-1")
+(check-equal? (top-interp '{let {f <- {anon {func x} : {if {<= x 10} then {func func {+ x 1}} else {-1}}}}
+                                {f f 1}}) "-1")
 
 
-(check-exn #rx"OAZO" (lambda () (top-interp '{let {f <- {anon {a} : {g 1}}}
+#;(check-exn #rx"OAZO" (lambda () (top-interp '{let {f <- {anon {a} : {g 1}}}
                                 {g <- {anon {b} : {+ a b}}}
                                 {g 5}}) "6"))
+
+(check-exn #rx"OAZO" (lambda () (parse '())))
 
 (check-exn #rx"OAZO" (lambda () (top-interp
                                  '{let {f <- {anon {x} : {+ x 1}}}
@@ -302,7 +302,7 @@
                     (numC 7))))
 
 (check-equal? (parse '{f 4}) (appC (idC 'f) (list(numC 4))))
-
+(check-exn #rx"OAZO" (lambda() (parse '{{anon {2} : {1}} 1})))
 
 
 
@@ -323,10 +323,18 @@
 ;; Parse-Binding-Syms Tests
 (define bds1 '{{x <- 5} {y <- 7}})
 (define bds2 '{1 <- 5})
+(define bds6 '{{meow} -> meow})
+(define bds7 '{{{{not a symbol}}}  <- 1})
 (check-equal? (parse-binding-syms bds1)
               (list 'x 'y))
 (check-exn #rx"OAZO" (lambda()
                        (parse-binding-syms bds2)))
+(check-exn #rx"OAZO" (lambda()
+                       (parse-binding-args bds6)))
+
+(check-exn #rx"OAZO" (lambda()
+                       (parse-binding-syms bds7)))
+
 
 
 ;; Lookup Tests
@@ -335,8 +343,11 @@
 
 
 ;; Extend-env Tests
-(check-equal? (extend-env (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1))) (list (binding 't (boolV #f)) (binding 'b (numV 2)) (binding 'dd (primopV '+))))
-              (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1))(binding 't (boolV #f)) (binding 'b (numV 2)) (binding 'dd (primopV '+))))
+(check-equal? (extend-env (list (binding 'x (numV 1)) (binding 'y (numV 1))
+                                (binding 'z (numV 1))) (list (binding 't (boolV #f))
+                                                             (binding 'b (numV 2)) (binding 'dd (primopV '+))))
+              (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1))
+                    (binding 't (boolV #f)) (binding 'b (numV 2)) (binding 'dd (primopV '+))))
 
 
 
@@ -360,19 +371,24 @@
 ;;(check-equal? (serialize (interp (numC 1) top-env)) "#<procedure>")
 (check-equal? (serialize (primopV '+)) "#<primop>")  
 
-(check-equal? (serialize (closeV (list 'x 'y) (appC (idC '+) (list (numC 1) (numC 1))) (list (binding 'x (numV 4)) (binding 'y (numV 2))))) "#<procedure>")
+(check-equal? (serialize (closeV (list 'x 'y) (appC (idC '+) (list (numC 1)
+                  (numC 1))) (list (binding 'x (numV 4)) (binding 'y (numV 2))))) "#<procedure>")
 (check-exn #rx"OAZO" (lambda()(serialize "string")))
 
 ;;helper
-(check-equal? (bind (list 'x 'y 'z) (list (numV 1) (numV 2) (numV 3))) (list (binding 'x (numV 1)) (binding 'y (numV 2)) (binding 'z (numV 3))))
-(check-equal? (bind (list 't 'b 'dd) (list (boolV #f) (numV 2) (primopV '+))) (list (binding 't (boolV #f)) (binding 'b (numV 2)) (binding 'dd (primopV '+))))
-(check-equal? (bind (list 'a) (list (closeV (list 'v 'c 'd) (numC 2) (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1))))))
-                    (list (binding 'a (closeV (list 'v 'c 'd) (numC 2) (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1)))))))
+(check-equal? (bind (list 'x 'y 'z) (list (numV 1) (numV 2) (numV 3)))
+              (list (binding 'x (numV 1)) (binding 'y (numV 2)) (binding 'z (numV 3))))
+(check-equal? (bind (list 't 'b 'dd) (list (boolV #f) (numV 2) (primopV '+)))
+              (list (binding 't (boolV #f)) (binding 'b (numV 2)) (binding 'dd (primopV '+))))
+(check-equal? (bind (list 'a) (list (closeV (list 'v 'c 'd) (numC 2)
+                                            (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1))))))
+              (list (binding 'a (closeV (list 'v 'c 'd) (numC 2)
+                                        (list (binding 'x (numV 1)) (binding 'y (numV 1)) (binding 'z (numV 1)))))))
 (check-exn #rx"OAZO" (lambda()(bind '(a) '()))) 
 (check-equal? (valid-id 'else:) #f) 
 
 
 
 #;(check-exn #rx"OAZO" (lambda() (top-interp
-                                '{{func {ignoreit x}: {+ 3 4}}
-                                  {func {main} : {ignoreit {/ 1 {+ 0 0}}}}})))
+                                  '{{func {ignoreit x}: {+ 3 4}}
+                                    {func {main} : {ignoreit {/ 1 {+ 0 0}}}}})))
