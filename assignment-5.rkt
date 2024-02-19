@@ -170,7 +170,7 @@
 ;; Helper to determine if the id is valid for an idC
 (define (valid-id [s : Symbol]) : Boolean
   (match s
-    [(or '? 'else: 'with 'as 'blam) #f]
+    [(or '? 'else: 'then 'with 'as 'blam) #f]
     [other #t]))
 
 ;; Takes a list of bindings as an Sexp and turns it into a list of symbol
@@ -240,13 +240,15 @@
                                 {g <- {anon {b} : {+ a b}}}
                                 {g 5}}) "6"))
 
-(check-exn #rx"OAZO" (lambda () (parse '())))
 
 (check-exn #rx"OAZO" (lambda () (top-interp
                                  '{let {f <- {anon {x} : {+ x 1}}}
                                        {y <- {anon {z} : {f 4}}}
                                        {y 3}})))
 
+
+(check-exn #rx"OAZO" (lambda () (top-interp
+                                 '{{anon {} : 12} 1})))
 
 
 ;; Interp tests
@@ -304,6 +306,7 @@
 (check-equal? (parse '{f 4}) (appC (idC 'f) (list(numC 4))))
 (check-exn #rx"OAZO" (lambda() (parse '{{anon {2} : {1}} 1})))
 
+(check-exn #rx"OAZO" (lambda () (parse '(+ then 4))))
 
 
 ;; Parse-Binding-Args Tests
