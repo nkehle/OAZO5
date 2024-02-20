@@ -128,9 +128,11 @@
      (ifC (parse test) (parse then) (parse else))]
     
     [(list 'let bindings ... body)                         ;; letC
+     (if (check-duplicates (parse-binding-syms (cast bindings (Listof Sexp)))) 
      (appC (lamC (parse-binding-syms (cast bindings (Listof Sexp))) 
                  (parse body))
-           (parse-binding-args (cast bindings (Listof Sexp))))]
+           (parse-binding-args (cast bindings (Listof Sexp))))
+     (error 'parse "OAZO Error: Expected a list of non-duplicate symbols for parameters"))]
 
     [(list 'anon syms ': body args ...)                    ;; lamC
      (if (and (list? syms) (all-symbol-and-valid? syms))
@@ -143,7 +145,7 @@
     
     [other (error 'parse "OAZO Syntax error in ~e" other)]))
 
-
+;;(parse '(let (z <- (anon () : 3)) (z <- 9) (z)))
 
 ;; SERIALIZE
 ;;-----------------------------------------------------------------------------------
@@ -332,7 +334,7 @@
               
               (ifC (appC (idC '<=) (list (idC 'x) (numC 1))) (numC 1) (numC -1)))
 
-;;(parse '(let (z <- (anon () : 3)) (z <- 9) (z)))
+(check-exn #rx"OAZO" (lambda () (parse '(let (z <- (anon () : 3)) (z <- 9) (z))))) 
 
 (check-equal? (parse '{{anon {x y} : {+ x y}} 5 7})
               
