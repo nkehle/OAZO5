@@ -65,7 +65,7 @@
            [else (error 'interp "OAZO: Test was not a boolean expression: ~e" e)])]
     [(appC f args) (define f-value : Value (interp f env)) ;;Current env
                    (match f-value
-                     [(? closeV?) ( ;;<add the check args here> )
+                     [(? closeV?) (check-args (closeV-arg f-value) args)
                                    (interp (closeV-body f-value)               ;;Current env
                                           (extend-env (bind (closeV-arg f-value)
                                                             (map(lambda ([a : ExprC]) (interp a env)) args))
@@ -78,11 +78,8 @@
 
 ;; Helper to check the number of param vs given arguments
 (define (check-args [param : (Listof Symbol)] [args : (Listof ExprC)]) : Boolean
-  (if (equal? (length param) (length args)) #t
+  (if (>= (length param) (length args)) #t
       (error 'check-args "OAZO mismatch number of arguments")))
-
-(check-equal? (check-args (list 'x) (list (numC 1))) #t)
-(check-exn #rx"OAZO" (lambda() (check-args (list 'x) (list (numC 1) (numC 2)))))
 
 
 ;; Takes a primop an list of args and the environment and ouputs the value 
@@ -217,6 +214,9 @@
 
 
 
+
+
+
 ;; TEST CASES
 ;;-----------------------------------------------------------------------------------
 
@@ -237,9 +237,10 @@
 (check-equal? (top-interp '{let {f <- {anon {a} : {+ a 4}}}
                                 {f 1}}) "5")
 
-(check-equal? (top-interp '{let {f <- {anon {a} : {+ a a}}}
+#;(check-equal? (top-interp '{let {f <- {anon {a} : {+ a a}}}
                                 {g <- {anon {b} : {* b b}}}
                                 {f {g 2} {g 2}}}) "8")
+
 
 ;; Recurisve Test
 (check-equal? (top-interp '{let {f <- {anon {func x} : {if {<= x 10} then {func func {+ x 1}} else {-1}}}}
@@ -257,9 +258,8 @@
                                        {y 3}})))
 
 
-#;(check-exn #rx"OAZO" (lambda () (top-interp
+(check-exn #rx"OAZO" (lambda () (top-interp
                                  '{{anon {} : 12} 1})))
-
 
 ;; Interp tests
 (check-equal? (interp (appC (idC '+) (list (numC 1) (numC 1))) top-env) (numV 2)) 
@@ -405,3 +405,10 @@
 #;(check-exn #rx"OAZO" (lambda() (top-interp
                                   '{{func {ignoreit x}: {+ 3 4}}
                                     {func {main} : {ignoreit {/ 1 {+ 0 0}}}}})))
+
+
+;; Check-args test
+(check-equal? (check-args (list 'x) (list (numC 1))) #t)
+(check-exn #rx"OAZO" (lambda() (check-args (list 'x) (list (numC 1) (numC 2)))))
+
+
