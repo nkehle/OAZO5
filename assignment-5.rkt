@@ -76,12 +76,6 @@
     [(lamC a body) (closeV a body env)]))
 
 
-;; Helper to check the number of param vs given arguments
-(define (check-args [param : (Listof Symbol)] [args : (Listof ExprC)]) : Boolean
-  (if (>= (length param) (length args)) #t
-      (error 'check-args "OAZO mismatch number of arguments")))
-
-
 ;; Takes a primop an list of args and the environment and ouputs the value 
 (define (apply-primop [primop : primopV] [args : (Listof ExprC)] [env : Env]) : Value
   (cond
@@ -221,6 +215,10 @@
        [(cons v rest-v) (cons (binding s v) (bind rest-s rest-v))])]))
 
 
+;; Helper to check the number of param vs given arguments
+(define (check-args [param : (Listof Symbol)] [args : (Listof ExprC)]) : Boolean
+  (if (>= (length param) (length args)) #t
+      (error 'check-args "OAZO mismatch number of arguments")))
 
 
 
@@ -245,7 +243,7 @@
 (check-equal? (top-interp '{let {f <- {anon {a} : {+ a 4}}}
                                 {f 1}}) "5")
 
-#;(check-exn #rx"OAZO" (lambda() (top-interp '{{anon {x x} : 3} 1 1})))
+(check-exn #rx"OAZO" (lambda() (top-interp '{{anon {x x} : 3} 1 1})))
 
 
 ;; Recurisve Test
@@ -253,7 +251,7 @@
                                 {f f 1}}) "-1")
 
 
-#;(check-exn #rx"OAZO" (lambda () (top-interp '{let {f <- {anon {a} : {g 1}}}
+(check-exn #rx"OAZO" (lambda () (top-interp '{let {f <- {anon {a} : {g 1}}}
                                 {g <- {anon {b} : {+ a b}}}
                                 {g 5}}) "6"))
 
@@ -266,6 +264,14 @@
 
 (check-exn #rx"OAZO" (lambda () (top-interp
                                  '{{anon {} : 12} 1})))
+
+
+(top-interp '{{anon {seven} : {seven}}
+               {{anon {minus} :
+                    {anon {} : {minus {+ 3 10} {* 2 3}}}}
+               {anon {x y} : {+ x {* -1 y}}}}})
+
+
 
 ;; Interp tests
 (check-equal? (interp (appC (idC '+) (list (numC 1) (numC 1))) top-env) (numV 2)) 
