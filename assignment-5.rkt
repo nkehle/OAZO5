@@ -130,7 +130,7 @@
     [(list 'anon syms ': body args ...)                    ;; lamC
      (if (and (list? syms) (all-symbol-and-valid? syms))
          (lamC (cast syms(Listof Symbol)) (parse body))
-         (error 'parse "OAZO Error: Expected a list of symbols for parameters"))]
+         (error 'parse "OAZO Error: Expected a list of non-duplicate symbols for parameters"))]
     
     [(list func exps ...)                                  ;; appC
      (appC (parse func) (map (lambda ([exps : Sexp])
@@ -170,15 +170,23 @@
 
 ;; Helper function to check if all elements of a list are symbols
 (define (all-symbol-and-valid? [lst : (Listof Sexp)]) : Boolean
-  (andmap (lambda (s)
+  (and (andmap (lambda (s)
             (and (symbol? s) (valid-id s)))
-          lst))
+          lst) (check-duplicates lst)))
 
 ;; Helper to determine if the id is valid for an idC
 (define (valid-id [s : Symbol]) : Boolean
   (match s
     [(or '? 'else: 'then 'with 'as 'blam) #f]
     [other #t]))
+
+;; Checks for duplicate parameter names
+(define (check-duplicates [lst : (Listof Sexp)]) : Boolean
+  (cond
+    [(null? lst) #t] 
+    [(member (car lst) (cdr lst)) #f] 
+    [else (check-duplicates (cdr lst))]))
+
 
 ;; Takes a list of bindings as an Sexp and turns it into a list of symbol
 (define (parse-binding-syms [bindings : (Listof Sexp)]) : (Listof Symbol)
@@ -237,9 +245,7 @@
 (check-equal? (top-interp '{let {f <- {anon {a} : {+ a 4}}}
                                 {f 1}}) "5")
 
-#;(check-equal? (top-interp '{let {f <- {anon {a} : {+ a a}}}
-                                {g <- {anon {b} : {* b b}}}
-                                {f {g 2} {g 2}}}) "8")
+#;(check-exn #rx"OAZO" (lambda() (top-interp '{{anon {x x} : 3} 1 1})))
 
 
 ;; Recurisve Test
@@ -400,6 +406,13 @@
 (check-exn #rx"OAZO" (lambda()(bind '(a) '()))) 
 (check-equal? (valid-id 'else:) #f) 
 
+
+;; Check-duplicates tests
+(define symbols1 '(a b c d))
+(define symbols2 '(x y z y))
+
+(check-equal? (check-duplicates symbols1) #t) ; Output: #f 
+(check-equal? (check-duplicates symbols2) #f) ; Output: #t
 
 
 #;(check-exn #rx"OAZO" (lambda() (top-interp
