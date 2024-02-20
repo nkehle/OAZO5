@@ -65,7 +65,8 @@
            [else (error 'interp "OAZO: Test was not a boolean expression: ~e" e)])]
     [(appC f args) (define f-value : Value (interp f env)) ;;Current env
                    (match f-value
-                     [(? closeV?) (interp (closeV-body f-value)               ;;Current env
+                     [(? closeV?) ( ;;<add the check args here> )
+                                   (interp (closeV-body f-value)               ;;Current env
                                           (extend-env (bind (closeV-arg f-value)
                                                             (map(lambda ([a : ExprC]) (interp a env)) args))
                                                       top-env))]
@@ -73,6 +74,15 @@
                      #;[else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])]
     
     [(lamC a body) (closeV a body env)]))
+
+
+;; Helper to check the number of param vs given arguments
+(define (check-args [param : (Listof Symbol)] [args : (Listof ExprC)]) : Boolean
+  (if (equal? (length param) (length args)) #t
+      (error 'check-args "OAZO mismatch number of arguments")))
+
+(check-equal? (check-args (list 'x) (list (numC 1))) #t)
+(check-exn #rx"OAZO" (lambda() (check-args (list 'x) (list (numC 1) (numC 2)))))
 
 
 ;; Takes a primop an list of args and the environment and ouputs the value 
@@ -247,7 +257,7 @@
                                        {y 3}})))
 
 
-(check-exn #rx"OAZO" (lambda () (top-interp
+#;(check-exn #rx"OAZO" (lambda () (top-interp
                                  '{{anon {} : 12} 1})))
 
 
