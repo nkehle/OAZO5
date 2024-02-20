@@ -102,7 +102,9 @@
             [(primopV '*)
              (numV (* f (first r)))]
             [(primopV '/)
-             (numV (/ f (first r)))]
+             (cond
+               [(equal? 0 (first r)) (error 'apply-primop "OAZO ERROR: Divide by zero!")]
+             [else (numV (/ f (first r)))])]
             [(primopV '<=)
              (boolV (<= f (first r)))]
             [(primopV 'equal?)
@@ -235,6 +237,10 @@
 ;; Top-Interp Tests
 (check-equal? (top-interp '{if {<= 4 3} then 29387 else true})"true")
 (check-equal? (top-interp '{if {<= 2 3} then 29387 else true})"29387")
+(check-equal? (top-interp '{if {<= 2 3} then false else true})"false")
+
+(check-exn #rx"OAZO" (lambda() (top-interp '(/ 1 (- 3 3)))))
+
 
 (check-equal? (top-interp '{{anon {seven} : {seven}}
                {{anon {minus} :
