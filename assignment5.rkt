@@ -73,9 +73,11 @@
                                                             (map(lambda ([a : ExprC]) (interp a env)) args))
                                                       (closeV-env f-value)))]
                      [(? primopV?) (apply-primop f-value args env)] 
-                     #;[else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])]
+                     [else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])] 
      
-    [(lamC a body) (closeV a body env)]))  
+    [(lamC a body) (closeV a body env)]))
+
+;;(top-interp '(3 4 5))
 
 ;; Helper to check the number of param vs given arguments
 (define (check-args [param : (Listof Symbol)] [args : (Listof ExprC)]) : Boolean
@@ -241,6 +243,9 @@
 
 (check-exn #rx"OAZO" (lambda() (top-interp '(/ 1 (- 3 3)))))
 
+(check-exn #rx"OAZO" (lambda() (top-interp '(3 4 5)))) 
+
+
 
 (check-equal? (top-interp '{{anon {seven} : {seven}}
                {{anon {minus} :
@@ -327,7 +332,7 @@
               
               (ifC (appC (idC '<=) (list (idC 'x) (numC 1))) (numC 1) (numC -1)))
 
-
+;;(parse '(let (z <- (anon () : 3)) (z <- 9) (z)))
 
 (check-equal? (parse '{{anon {x y} : {+ x y}} 5 7})
               
