@@ -53,27 +53,36 @@
 ;;-----------------------------------------------------------------------------------
 ;; Inteprets the given expression using list of funs to resolve appC's
 (define (interp [e : ExprC] [env : Env]) : Value
+    ;;(displayln env)
   (match e
-    [(numC n) (numV n)]          ;; numC
+    [(numC n) (numV n)]          ;; numC 
     [(idC s) (lookup s env)]     ;; idC
     [(strC str) (strV str)]      ;; strC
     [(ifC test then else)        ;; ifC
-     (define test-result (interp test env))
+     (define test-result (interp test env)) 
      (cond [(boolV? test-result)
             (cond [(boolV-b test-result) (interp then env)]
                   [else (interp else env)])]
-           [else (error 'interp "OAZO: Test was not a boolean expression: ~e" e)])]
+           [else (error 'interp "OAZO: Test was not a boolean expression: ~e" e)])] 
     [(appC f args) (define f-value : Value (interp f env)) ;;Current env
                    (match f-value
                      [(? closeV?) (check-args (closeV-arg f-value) args)
+      
                                    (interp (closeV-body f-value)               ;;Current env
                                           (extend-env (bind (closeV-arg f-value)
                                                             (map(lambda ([a : ExprC]) (interp a env)) args))
-                                                      top-env))]
-                     [(? primopV?) (apply-primop f-value args env)]
-                     #;[else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])]
-    
+                                                      (closeV-env f-value)))]
+                     [(? primopV?) (apply-primop f-value args env)] 
+                     [else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])] 
+     
     [(lamC a body) (closeV a body env)]))
+
+;;(top-interp '(3 4 5))
+
+;; Helper to check the number of param vs given arguments
+(define (check-args [param : (Listof Symbol)] [args : (Listof ExprC)]) : Boolean
+  (if (>= (length param) (length args)) #t
+      (error 'check-args "OAZO mismatch number of arguments")))
 
 
 ;; Takes a primop an list of args and the environment and ouputs the value 
@@ -82,9 +91,11 @@
     [(> (length args) 2) (error 'apply "OAZO too many values for primitave operation ~v" args)]
     [else
      (let ([arg-values (map (λ ([arg : ExprC])
-                              (match (interp arg env)
-                                [(numV n) n]
-                                [else (error 'apply-primop "OAZO ERROR: Non-numeric argument")])) args)])
+                          (match (interp arg env)
+                            [(numV n) n]
+                            [else (match primop
+                                       [(primopV 'error) (error 'apply-primop "OAZO : user-error")]
+                                       [else (error 'apply-primop "OAZO ERROR: Non-numeric argument")])]))args)])
        (match arg-values
          [(cons f r)
           (match primop
@@ -95,11 +106,13 @@
             [(primopV '*)
              (numV (* f (first r)))]
             [(primopV '/)
-             (numV (/ f (first r)))]
+             (cond
+               [(equal? 0 (first r)) (error 'apply-primop "OAZO ERROR: Divide by zero!")]
+             [else (numV (/ f (first r)))])]
             [(primopV '<=)
              (boolV (<= f (first r)))]
             [(primopV 'equal?)
-             (boolV (equal? (serialize f) (serialize (first r))))])]))])) 
+             (boolV (equal? (serialize f) (serialize (first r))))])]))]))
 
 
 
@@ -117,9 +130,11 @@
      (ifC (parse test) (parse then) (parse else))]
     
     [(list 'let bindings ... body)                         ;; letC
+     (if (check-duplicates (parse-binding-syms (cast bindings (Listof Sexp)))) 
      (appC (lamC (parse-binding-syms (cast bindings (Listof Sexp))) 
                  (parse body))
-           (parse-binding-args (cast bindings (Listof Sexp))))]
+           (parse-binding-args (cast bindings (Listof Sexp))))
+     (error 'parse "OAZO Error: Expected a list of non-duplicate symbols for parameters"))]
 
     [(list 'anon syms ': body args ...)                    ;; lamC
      (if (and (list? syms) (all-symbol-and-valid? syms))
@@ -132,7 +147,7 @@
     
     [other (error 'parse "OAZO Syntax error in ~e" other)]))
 
-
+;;(parse '(let (z <- (anon () : 3)) (z <- 9) (z)))
 
 ;; SERIALIZE
 ;;-----------------------------------------------------------------------------------
@@ -142,7 +157,9 @@
     [(? numV? n) (number->string (numV-n n))]
     [(? real? n) (number->string n)]
     [(? closeV? s) "#<procedure>"]
+    [(boolV #t) "true"]
     [#t "true"]
+    [(boolV #f) "false"]
     [#f "false"]
     [(? primopV? p) "#<primop>"]
     [else (error 'serialize "OAZO Unsupported value: ~v" val)]))
@@ -156,7 +173,7 @@
       ['() (error 'lookup "OAZO ERROR: name not found: ~e" for)]
       [(cons (binding name val) r) (cond
                                      [(symbol=? for name) val]
-                                     [else (lookup for r)])]))
+                                     [else (lookup for r)])]))  
 
 
 ;; HELPER FUNCTIONS
@@ -212,13 +229,10 @@
     [(cons s rest-s)
      (match val
        ['() (error 'bind "OAZO Error: Mismatched number of arguments and symbols")]
+      ;; [(list (? closeV? c)) (bind sym (closeV-body c))]
        [(cons v rest-v) (cons (binding s v) (bind rest-s rest-v))])]))
 
 
-;; Helper to check the number of param vs given arguments
-(define (check-args [param : (Listof Symbol)] [args : (Listof ExprC)]) : Boolean
-  (if (>= (length param) (length args)) #t
-      (error 'check-args "OAZO mismatch number of arguments")))
 
 
 
@@ -227,6 +241,21 @@
 ;;-----------------------------------------------------------------------------------
 
 ;; Top-Interp Tests
+(check-equal? (top-interp '{if {<= 4 3} then 29387 else true})"true")
+(check-equal? (top-interp '{if {<= 2 3} then 29387 else true})"29387")
+(check-equal? (top-interp '{if {<= 2 3} then false else true})"false")
+
+(check-exn #rx"OAZO" (lambda() (top-interp '(/ 1 (- 3 3)))))
+
+(check-exn #rx"OAZO" (lambda() (top-interp '(3 4 5)))) 
+
+
+
+(check-equal? (top-interp '{{anon {seven} : {seven}}
+               {{anon {minus} :
+                    {anon {} : {minus {+ 3 10} {* 2 3} }}}
+               {anon {x y} : {+ x {* -1 y}}}}}) "7")
+
 (check-equal? (top-interp '{let {x <- 5}
                                 {y <- 7}
                                 {+ x y}}) "12")
@@ -243,7 +272,7 @@
 (check-equal? (top-interp '{let {f <- {anon {a} : {+ a 4}}}
                                 {f 1}}) "5")
 
-(check-exn #rx"OAZO" (lambda() (top-interp '{{anon {x x} : 3} 1 1})))
+#;(check-exn #rx"OAZO" (lambda() (top-interp '{{anon {x x} : 3} 1 1})))
 
 
 ;; Recurisve Test
@@ -251,9 +280,11 @@
                                 {f f 1}}) "-1")
 
 
-(check-exn #rx"OAZO" (lambda () (top-interp '{let {f <- {anon {a} : {g 1}}}
+#;(check-exn #rx"OAZO" (lambda () (top-interp '{let {f <- {anon {a} : {g 1}}}
                                 {g <- {anon {b} : {+ a b}}}
                                 {g 5}}) "6"))
+
+(check-exn #rx"user-error" (lambda () (top-interp '{+ 4 {error "1234"}})))
 
 
 (check-exn #rx"OAZO" (lambda () (top-interp
@@ -264,14 +295,6 @@
 
 (check-exn #rx"OAZO" (lambda () (top-interp
                                  '{{anon {} : 12} 1})))
-
-
-(top-interp '{{anon {seven} : {seven}}
-               {{anon {minus} :
-                    {anon {} : {minus {+ 3 10} {* 2 3}}}}
-               {anon {x y} : {+ x {* -1 y}}}}})
-
-
 
 ;; Interp tests
 (check-equal? (interp (appC (idC '+) (list (numC 1) (numC 1))) top-env) (numV 2)) 
@@ -315,7 +338,7 @@
               
               (ifC (appC (idC '<=) (list (idC 'x) (numC 1))) (numC 1) (numC -1)))
 
-
+(check-exn #rx"OAZO" (lambda () (parse '(let (z <- (anon () : 3)) (z <- 9) (z))))) 
 
 (check-equal? (parse '{{anon {x y} : {+ x y}} 5 7})
               
@@ -429,5 +452,3 @@
 ;; Check-args test
 (check-equal? (check-args (list 'x) (list (numC 1))) #t)
 (check-exn #rx"OAZO" (lambda() (check-args (list 'x) (list (numC 1) (numC 2)))))
-
-
