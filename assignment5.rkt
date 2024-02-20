@@ -149,7 +149,9 @@
     [(? numV? n) (number->string (numV-n n))]
     [(? real? n) (number->string n)]
     [(? closeV? s) "#<procedure>"]
+    [(boolV #t) "true"]
     [#t "true"]
+    [(boolV #f) "false"]
     [#f "false"]
     [(? primopV? p) "#<primop>"]
     [else (error 'serialize "OAZO Unsupported value: ~v" val)]))
@@ -231,6 +233,8 @@
 ;;-----------------------------------------------------------------------------------
 
 ;; Top-Interp Tests
+(check-equal? (top-interp '{if {<= 4 3} then 29387 else true})"true")
+(check-equal? (top-interp '{if {<= 2 3} then 29387 else true})"29387")
 
 (check-equal? (top-interp '{{anon {seven} : {seven}}
                {{anon {minus} :
