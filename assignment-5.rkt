@@ -2,7 +2,7 @@
 (require typed/rackunit)
 
 ;; Assignment 5
-;; ...
+;; Full Project Implemented
 
 
 ;; OAZO Data Definitions
@@ -76,13 +76,6 @@
     [(lamC a body) (closeV a body env)]))
 
 
-
-;; Helper to check the number of param vs given arguments
-(define (check-args [param : (Listof Symbol)] [args : (Listof ExprC)]) : Boolean
-  (if (>= (length param) (length args)) #t
-      (error 'check-args "OAZO mismatch number of arguments")))
-
-
 ;; Takes a primop an list of args and the environment and ouputs the value 
 (define (apply-primop [primop : primopV] [args : (Listof ExprC)] [env : Env]) : Value
   (cond
@@ -94,7 +87,6 @@
                                 [(strV s) s]
                                 [(boolV b) b]
                                 [(primopV p) p]
-                                ;;[else (error 'apply-primop "OAZO ERROR: Non-numeric argument")]
                                 )) args)])  
        (match arg-values
          [(list l) (if (equal? primop (primopV 'error)) (error 'apply-primop "OAZO ERROR: user-error")
@@ -197,6 +189,11 @@
 ;; HELPER FUNCTIONS
 ;;-----------------------------------------------------------------------------------
 
+;; Helper to check the number of param vs given arguments
+(define (check-args [param : (Listof Symbol)] [args : (Listof ExprC)]) : Boolean
+  (if (>= (length param) (length args)) #t
+      (error 'check-args "OAZO mismatch number of arguments")))
+
 ;; Helper function to check if all elements of a list are symbols
 (define (all-symbol-and-valid? [lst : (Listof Sexp)]) : Boolean
   (and (andmap (lambda (s)
@@ -254,16 +251,8 @@
 
 
 
-
 ;; TEST CASES
 ;;-----------------------------------------------------------------------------------
-
-(check-equal? (apply-primop (primopV 'equal?) (list (numC 5) (numC 5)) top-env) (boolV #t))
-(check-equal? (apply-primop (primopV 'equal?) (list (strC "hello") (strC "hello")) top-env) (boolV #t))
-(check-equal? (apply-primop (primopV 'equal?) (list (idC '+) (idC '+)) top-env) (boolV #f)) 
-(check-equal? (apply-primop (primopV 'equal?) (list (numC 5) (strC "5")) top-env) (boolV #f)) 
-(check-equal? (apply-primop (primopV 'equal?) (list (idC 'true) (idC 'true)) top-env) (boolV #t))
-
 
 ;; Top-Interp Tests
 (check-equal? (top-interp '{if {<= 4 3} then 29387 else true})"true")
@@ -474,6 +463,11 @@
 (check-exn #rx"OAZO" (lambda()(bind '(a) '()))) 
 (check-equal? (valid-id 'else:) #f) 
 
+(check-equal? (apply-primop (primopV 'equal?) (list (numC 5) (numC 5)) top-env) (boolV #t))
+(check-equal? (apply-primop (primopV 'equal?) (list (strC "hello") (strC "hello")) top-env) (boolV #t))
+(check-equal? (apply-primop (primopV 'equal?) (list (idC '+) (idC '+)) top-env) (boolV #f)) 
+(check-equal? (apply-primop (primopV 'equal?) (list (numC 5) (strC "5")) top-env) (boolV #f)) 
+(check-equal? (apply-primop (primopV 'equal?) (list (idC 'true) (idC 'true)) top-env) (boolV #t))
 
 ;; Check-duplicates tests
 (define symbols1 '(a b c d))
