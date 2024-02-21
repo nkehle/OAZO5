@@ -53,7 +53,6 @@
 ;;-----------------------------------------------------------------------------------
 ;; Inteprets the given expression using list of funs to resolve appC's
 (define (interp [e : ExprC] [env : Env]) : Value
-    ;;(displayln env)
   (match e
     [(numC n) (numV n)]          ;; numC 
     [(idC s) (lookup s env)]     ;; idC
@@ -76,7 +75,7 @@
      
     [(lamC a body) (closeV a body env)]))
 
-;;(top-interp '(3 4 5))
+
 
 ;; Helper to check the number of param vs given arguments
 (define (check-args [param : (Listof Symbol)] [args : (Listof ExprC)]) : Boolean
@@ -86,7 +85,6 @@
 
 ;; Takes a primop an list of args and the environment and ouputs the value 
 (define (apply-primop [primop : primopV] [args : (Listof ExprC)] [env : Env]) : Value
-  ;;(displayln args)
   (cond
     [(> (length args) 2) (error 'apply "OAZO too many values for primitave operation ~v" args)]
     [else
@@ -96,6 +94,7 @@
                                 [(strV s) s]
                                 [(boolV b) b]
                                 [(primopV p) p]
+                                [(closeV arg body e) arg]
                                 ;;[else (error 'apply-primop "OAZO ERROR: Non-numeric argument")]
                                 )) args)])  
        (match arg-values
@@ -123,12 +122,12 @@
             [(primopV '<=)
              (if (and (real? f) (real? second)) (boolV (<= f second))
                  (error 'apply-primop "OAZO ERROR: Non-numeric argument for <="))]
-            ;;[(primopV 'error) (error 'apply-primop "OAZO ERROR: user-error"
-            ;;(serialize f))]  ;;Should contain the user-error and the serialized version of the error
             [(primopV 'equal?)
-             (boolV (equal? (serialize f) (serialize (first r))))])]))]))   
-
-;;(top-interp '(+ 4 (error "1234"))) 
+             (let ([operand1 f]
+                   [operand2 (first r)])
+               (cond  
+                  [(and(not(or(closeV? operand1)(closeV? operand2)))(not(or(primopV? operand1)(primopV? operand2))))
+                   (boolV (equal? operand1 operand2))]))])]))]))   
 
  
 ;; PARSE
@@ -162,7 +161,6 @@
     
     [other (error 'parse "OAZO Syntax error in ~e" other)]))
 
-;;(parse '(let (z <- (anon () : 3)) (z <- 9) (z)))
 
 ;; SERIALIZE
 ;;-----------------------------------------------------------------------------------
@@ -173,7 +171,6 @@
     [(? real? n) (number->string n)]
     [(? closeV? s) "#<procedure>"]
     [(boolV #t) "true"]
-    ;;[(? string? str) str]
     [#t "true"]
     [(boolV #f) "false"]
     [#f "false"]
@@ -256,11 +253,29 @@
 ;; TEST CASES
 ;;-----------------------------------------------------------------------------------
 
+(check-equal? (apply-primop (primopV 'equal?) (list (numC 5) (numC 5)) top-env) (boolV #t))
+(check-equal? (apply-primop (primopV 'equal?) (list (strC "hello") (strC "hello")) top-env) (boolV #t))
+;;(check-equal? (apply-primop (primopV 'equal?) (list (idC '+) (idC '+)) top-env) (boolV #f)) 
+(check-equal? (apply-primop (primopV 'equal?) (list (numC 5) (strC "5")) top-env) (boolV #f)) 
+(check-equal? (apply-primop (primopV 'equal?) (list (idC 'true) (idC 'true)) top-env) (boolV #t))
+;;(check-equal? (apply-primop (primopV 'equal?) (list (primopV '+) (idC 'true)) top-env) (boolV #f))
+#;(check-equal? (apply-primop (primopV 'equal?) (list (closeV (list 'x 'y) (appC (idC '+) (list (numC 1)
+                  (numC 1))) (list (binding 'x (numV 4)) (binding 'y (numV 2)))) (numC 3)) top-env) (boolV #f))
+
+
 ;; Top-Interp Tests
 (check-equal? (top-interp '{if {<= 4 3} then 29387 else true})"true")
 (check-equal? (top-interp '{if {<= 2 3} then 29387 else true})"29387")
 (check-equal? (top-interp '{if {<= 2 3} then false else true})"false")
 
+
+#;(check-equal? (interp (appC (idC 'equal?) (list (closeV (list 'x 'y) (appC (idC '+) (list (numC 1)
+                  (numC 1))) (list (binding 'x (numV 4)) (binding 'y (numV 2)))) (numC 3))) top-env) (boolV #f))
+
+#;(check-equal? (interp (appC (idC 'equal?) ()) top-env) (boolV #f))
+(check-equal? (top-interp '{{anon {} : {equal? + +}}}) "true") 
+(check-equal? (top-interp '{{anon {x} : {equal? x {anon {} : 1}}} 5}) "false")
+ 
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 (error "1234")))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 #t))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(- 4 "s"))))
@@ -271,6 +286,7 @@
 (check-exn #rx"OAZO"(lambda ()(top-interp '(/ + + )))) 
 (check-equal?(top-interp '(equal? true true))"true")
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 (error)))))
+(check-exn #rx"OAZO"(lambda ()(top-interp '(equal? 4 (-)))))
 (check-exn #rx"OAZO" (lambda ()(top-interp '((anon (e) : (e e)) error))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ ))))
 ;;(top-interp '(/ + + )) 
@@ -282,7 +298,7 @@
 (check-exn #rx"OAZO" (lambda() (top-interp '(3 4 5)))) 
 
 
-
+ 
 (check-equal? (top-interp '{{anon {seven} : {seven}}
                {{anon {minus} :
                     {anon {} : {minus {+ 3 10} {* 2 3} }}}
@@ -332,7 +348,7 @@
 (check-equal? (interp (appC (idC '*) (list (numC 12)(numC 2))) top-env) (numV 24))  
 (check-equal? (interp (appC (idC '/) (list (numC 6) (numC 2))) top-env) (numV 3))
 (check-equal? (interp (appC (idC '<=) (list(numC 0) (numC 2))) top-env) (boolV true))
-(check-equal? (interp (appC (idC 'equal?) (list (numC 2) (numC 2))) top-env) (boolV true))
+(check-equal? (interp (appC (idC 'equal?) (list (idC '+) (numC 2))) top-env) (boolV #f))
 
 (check-equal? (interp (appC (lamC (list 'x)
                                   (appC (idC '+)
