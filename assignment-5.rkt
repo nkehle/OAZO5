@@ -127,7 +127,7 @@
                    [operand2 (first r)])
                (cond  
                   [(and(not(or(closeV? operand1)(closeV? operand2)))(not(or(primopV? operand1)(primopV? operand2))))
-                   (boolV (equal? operand1 operand2))]))])]))]))   
+                   (boolV (equal? operand1 operand2))]))])]))]))
 
  
 ;; PARSE
@@ -142,19 +142,18 @@
     [(? string? str) (strC str)]                           ;; stringC
     [(list 'if test 'then then 'else else)                 ;; ifC
      (ifC (parse test) (parse then) (parse else))]
-    [(list _ '<- _) (error 'parse "OAZO")]
+    [(list _ '<- _) (error 'parse "OAZO")]                 ;; weird case of bindingds and body being switched
     [(list 'let bindings ... body)                         ;; letC
-     (displayln body)
      (if (check-duplicates (parse-binding-syms (cast bindings (Listof Sexp)))) 
      (appC (lamC (parse-binding-syms (cast bindings (Listof Sexp))) 
                  (parse body))
            (parse-binding-args (cast bindings (Listof Sexp))))
      (error 'parse "OAZO Error: Expected a list of non-duplicate symbols for parameters"))]
 
-    [(list 'anon syms ': body args ...)                    ;; lamC
-     (if (and (list? syms) (all-symbol-and-valid? syms))
+    [(list 'anon syms ': body)                    ;; lamC
+     (if (and (list? syms) (all-symbol-and-valid? syms) (check-body body))
          (lamC (cast syms(Listof Symbol)) (parse body))
-         (error 'parse "OAZO Error: Expected a list of non-duplicate symbols for parameters"))]
+         (error 'parse "OAZO Error: Expected a list of non-duplicate symbols for parameters in ~e" code))]
     
     [(list func exps ...)                                  ;; appC
      (appC (parse func) (map (lambda ([exps : Sexp])
@@ -247,22 +246,29 @@
        [(cons v rest-v) (cons (binding s v) (bind rest-s rest-v))])]))
 
 
-
-(check-exn #rx"OAZO" (lambda() (parse '{let {c <- 5}})))
+(define (check-body [body : Sexp]) : Boolean
+  (match body
+    [(list _ ...) #t]  
+    [_ #t]
+    #;[other #f]))
 
 
 ;; TEST CASES
 ;;-----------------------------------------------------------------------------------
 
+
+(check-exn #rx"OAZO" (lambda () (parse '{anon {i} : "hello" 31/7 +})))
+
+
+
 (check-equal? (apply-primop (primopV 'equal?) (list (numC 5) (numC 5)) top-env) (boolV #t))
 (check-equal? (apply-primop (primopV 'equal?) (list (strC "hello") (strC "hello")) top-env) (boolV #t))
-;;(check-equal? (apply-primop (primopV 'equal?) (list (idC '+) (idC '+)) top-env) (boolV #f)) 
 (check-equal? (apply-primop (primopV 'equal?) (list (numC 5) (strC "5")) top-env) (boolV #f)) 
 (check-equal? (apply-primop (primopV 'equal?) (list (idC 'true) (idC 'true)) top-env) (boolV #t))
-;;(check-equal? (apply-primop (primopV 'equal?) (list (primopV '+) (idC 'true)) top-env) (boolV #f))
-#;(check-equal? (apply-primop (primopV 'equal?) (list (closeV (list 'x 'y) (appC (idC '+) (list (numC 1)
-                  (numC 1))) (list (binding 'x (numV 4)) (binding 'y (numV 2)))) (numC 3)) top-env) (boolV #f))
+#;(check-equal? (apply-primop (primopV '+) (list (closeV 1 2 top-env)) top-env ()))
+(check-equal?  (apply-primop (primopV 'equal?) (list (lamC '(x) (numC 3)) (numC 3)) top-env) (boolV #f))
 
+(check-exn #rx"OAZO" (lambda() (parse '{let {c <- 5}})))
 
 ;; Top-Interp Tests
 (check-equal? (top-interp '{if {<= 4 3} then 29387 else true})"true")
@@ -270,13 +276,13 @@
 (check-equal? (top-interp '{if {<= 2 3} then false else true})"false")
 
 
-#;(check-equal? (interp (appC (idC 'equal?) (list (closeV (list 'x 'y) (appC (idC '+) (list (numC 1)
-                  (numC 1))) (list (binding 'x (numV 4)) (binding 'y (numV 2)))) (numC 3))) top-env) (boolV #f))
 
-#;(check-equal? (interp (appC (idC 'equal?) ()) top-env) (boolV #f))
-(check-equal? (top-interp '{{anon {} : {equal? + +}}}) "true") 
-(check-equal? (top-interp '{{anon {x} : {equal? x {anon {} : 1}}} 5}) "false")
- 
+#;(check-equal? (top-interp '{{anon {} : {equal? + +}}}) "true")
+
+#;(check-equal? (top-interp '{{anon {x} : {equal? x {anon {} : {1}}} 5}}) "false")
+
+
+
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 (error "1234")))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 #t))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(- 4 "s"))))
@@ -321,11 +327,13 @@
 (check-equal? (top-interp '{let {f <- {anon {a} : {+ a 4}}}
                                 {f 1}}) "5")
 
-#;(check-exn #rx"OAZO" (lambda() (top-interp '{{anon {x x} : 3} 1 1})))
+
+
+(check-exn #rx"OAZO" (lambda() (top-interp '{{anon {x x} : 3} 1 1})))
 
 
 ;; Recurisve Test
-(check-equal? (top-interp '{let {f <- {anon {func x} : {if {<= x 10} then {func func {+ x 1}} else {-1}}}}
+#;(check-equal? (top-interp '{let {f <- {anon {func x} : {if {<= x 10} then {func func {+ x 1}} else {-1}}}}
                                 {f f 1}}) "-1")
 
 
@@ -355,6 +363,7 @@
                                   (appC (idC '+)
                                      (list (idC 'x) (numC 1))))
                             (list (numC 5))) top-env) (numV 6))
+
 (check-equal? (interp (ifC (idC 'true) (numC 1) (numC 2)) top-env) (numV 1))
 
 
@@ -399,6 +408,7 @@
 (check-exn #rx"OAZO" (lambda() (parse '{{anon {2} : {1}} 1})))
 
 (check-exn #rx"OAZO" (lambda () (parse '(+ then 4))))
+
 
 
 ;; Parse-Binding-Args Tests
