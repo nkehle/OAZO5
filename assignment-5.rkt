@@ -78,13 +78,6 @@
     [(lamC a body) (closeV a body env)]))
 
 
-
-;; Helper to check the number of param vs given arguments
-(define (check-args [param : (Listof Symbol)] [args : (Listof ExprC)]) : Boolean
-  (if (>= (length param) (length args)) #t
-      (error 'check-args "OAZO mismatch number of arguments")))
-
-
 ;; Takes a primop an list of args and the environment and ouputs the value 
 (define (apply-primop [primop : primopV] [args : (Listof ExprC)] [env : Env]) : Value
   (cond
@@ -182,19 +175,24 @@
     [else (error 'serialize "OAZO Unsupported value: ~v" val)]))
 
 
-;; LOOKUP
+
+;; HELPER FUNCTIONS
 ;;-----------------------------------------------------------------------------------
+
+;; Helper to check the number of param vs given arguments
+(define (check-args [param : (Listof Symbol)] [args : (Listof ExprC)]) : Boolean
+  (if (>= (length param) (length args)) #t
+      (error 'check-args "OAZO mismatch number of arguments")))
+
+
 ;; Helper that looks up a value in an environment
 (define (lookup [for : Symbol] [env : Env]) : Value
     (match env
       ['() (error 'lookup "OAZO ERROR: name not found: ~e" for)]
       [(cons (binding name val) r) (cond
                                      [(symbol=? for name) val]
-                                     [else (lookup for r)])]))  
+                                     [else (lookup for r)])]))
 
-
-;; HELPER FUNCTIONS
-;;-----------------------------------------------------------------------------------
 
 ;; Helper function to check if all elements of a list are symbols
 (define (all-symbol-and-valid? [lst : (Listof Sexp)]) : Boolean
