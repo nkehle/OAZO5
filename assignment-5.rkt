@@ -39,6 +39,8 @@
         (binding '/ (primopV '/))
         (binding '<= (primopV '<=))
         (binding 'equal? (primopV 'equal?))
+        (binding 'read-num (primopV 'read-num))
+        (binding '++ (primopV '++))
         (binding 'error (primopV 'error))))
 
 
@@ -94,9 +96,7 @@
                                 [(strV s) s]
                                 [(boolV b) b]
                                 [(primopV p) p]
-                                [(closeV arg body e) arg]
-                                ;;[else (error 'apply-primop "OAZO ERROR: Non-numeric argument")]
-                                )) args)])  
+                                [(closeV arg body e) arg])) args)])  
        (match arg-values
          [(list l) (if (equal? primop (primopV 'error)) (error 'apply-primop "OAZO ERROR: user-error")
                        (error 'apply-primop "OAZO ERROR: Non-numeric argument"))]
@@ -126,10 +126,13 @@
              (let ([operand1 f]
                    [operand2 (first r)])
                (cond  
-                  [(and(not(or(closeV? operand1)(closeV? operand2)))(not(or(primopV? operand1)(primopV? operand2))))
-                   (boolV (equal? operand1 operand2))]))])]))]))
+                  [(and(not(or(closeV? operand1)(closeV? operand2)))
+                       (not(or(primopV? operand1)(primopV? operand2))))
+                   (boolV (equal? operand1 operand2))]))]
+            [(primopV 'read-num) (read-num)]
+            [(primopV '++) (++ (serialize f) (map serialize r))])]))]))
 
- 
+
 ;; PARSE
 ;;-----------------------------------------------------------------------------------
 ;; Takes in a Sexp of concrete syntax and outputs the AST for the OAZO language
@@ -248,6 +251,8 @@
        [(cons v rest-v) (cons (binding s v) (bind rest-s rest-v))])]))
 
 
+;; Checks the body of the lamC and ensures that it is either a single argument
+;; or that there are proper {} around them
 (define (check-body [body : Sexp]) : Boolean
   (match body
     [(list _ ...) #t]  
@@ -255,10 +260,40 @@
     #;[other #f]))
 
 
+;; Prompts the user to give a number and errors if it is not a valid Real
+;; and returns a numV if its valid
+(define (read-num) : Value
+  (display "> ")
+  (flush-output)
+  (define input (read-line))
+  (cond
+    [(eof-object? input) (error 'read-num "OAZO: Unexpected end of input")]
+    [(string? input)
+     (define num (string->number input))
+     (if (real? num)
+         (numV num)
+         (error 'read-num "OAZO: Input is not a real number"))]
+    [else (error 'read-num "OAZO: Invalid input format")]))
+
+
+;; takes a string a and a list of strings b and concatenates them in order
+(define (++ [a : String] [b : (Listof String)]) : Value
+  (if (empty? b)
+      (strV a)
+      (++ (string-append a (first b)) (rest b))))
+
+
 ;; TEST CASES
 ;;-----------------------------------------------------------------------------------
 
 
+;; ++ tests
+(check-equal? (++ "Hello, " '("world" "!")) (strV "Hello, world!"))
+(check-equal? (++ "abc" '("def" "ghi" "jkl")) (strV "abcdefghijkl"))
+(check-equal? (++ "" '("one" "two" "three")) (strV "onetwothree"))
+
+
+;; test cases from backtesting OAZO5
 (check-exn #rx"OAZO" (lambda () (parse '{let {: <- ""} "World"})))
 
 (check-exn #rx"OAZO" (lambda () (parse '{anon {i} : "hello" 31/7 +})))
