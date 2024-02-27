@@ -170,6 +170,7 @@
     [(? numV? n) (number->string (numV-n n))]
     [(? real? n) (number->string n)]
     [(? closeV? s) "#<procedure>"]
+    [(? strV? str) (format "\"~a\"" (strV-str str))]
     [(boolV #t) "true"]
     [#t "true"]
     [(boolV #f) "false"]
@@ -217,7 +218,8 @@
   (begin
     (for/list ([binding (in-list bindings)])
       (match binding
-        [(list sym '<- _) (cast sym Symbol)]
+        [(list sym '<- _) (if (valid-id (cast sym Symbol)) (cast sym Symbol)
+                              (error 'parse-binding-sym "OAZO: Invalid Binding"))]
         [else (error 'parse-binding-syms "OAZO: Invalid binding: ~a" binding)])))) 
 
 
@@ -257,6 +259,8 @@
 ;;-----------------------------------------------------------------------------------
 
 
+(check-exn #rx"OAZO" (lambda () (parse '{let {: <- ""} "World"})))
+
 (check-exn #rx"OAZO" (lambda () (parse '{anon {i} : "hello" 31/7 +})))
 
 
@@ -281,7 +285,7 @@
 
 #;(check-equal? (top-interp '{{anon {x} : {equal? x {anon {} : {1}}} 5}}) "false")
 
-
+(check-equal? (serialize (strV "Hello")) "\"Hello\"")
 
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 (error "1234")))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 #t))))
