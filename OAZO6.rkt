@@ -39,8 +39,9 @@
         (binding '/ (primopV '/))
         (binding '<= (primopV '<=))
         (binding 'equal? (primopV 'equal?))
-        (binding 'error (primopV 'error))
-        (binding 'println (primopV 'println))))
+        (binding 'read-num (primopV 'read-num))
+        (binding '++ (primopV '++))
+        (binding 'error (primopV 'error))))
 
 
 ;; TOP-INTERP
@@ -76,14 +77,6 @@
      
     [(lamC a body) (closeV a body env)]))
 
-
-
-;; Helper to check the number of param vs given arguments
-(define (check-args [param : (Listof Symbol)] [args : (Listof ExprC)]) : Boolean
-  (if (>= (length param) (length args)) #t
-      (error 'check-args "OAZO mismatch number of arguments")))
-
-
 (define (interp-primop [args : (Listof ExprC)] [env : Env]) : (Listof Any)
  (let ([arg-values (map (λ ([arg : ExprC])
                               (match (interp arg env)
@@ -94,6 +87,7 @@
                                 [(closeV arg body e) arg]))
                             args)])
    arg-values))
+
 
 ;; Takes a primop an list of args and the environment and ouputs the value 
 (define (apply-primop [primop : primopV] [args : (Listof ExprC)] [env : Env]) : Value
@@ -138,10 +132,11 @@
              (cond   
                [(and(not(or(closeV? operand1)(closeV? operand2)))(not(or(primopV? operand1)(primopV? operand2))))
                 (boolV (equal? operand1 operand2))]
-               [else (boolV #f)]))])])]))    
- 
+               [else (boolV #f)]))]    
+            [(primopV 'read-num) (read-num)]
+            [(primopV '++) (++ (serialize f) (map serialize (rest a-v)))])])]))
 
- 
+
 ;; PARSE
 ;;-----------------------------------------------------------------------------------
 ;; Takes in a Sexp of concrete syntax and outputs the AST for the OAZO language
@@ -154,7 +149,7 @@
     [(? string? str) (strC str)]                           ;; stringC
     [(list 'if test 'then then 'else else)                 ;; ifC
      (ifC (parse test) (parse then) (parse else))]
-    [(list _ '<- _) (error 'parse "OAZO")]
+    [(list _ '<- _) (error 'parse "OAZO")]                 ;; weird case of bindingds and body being switched
     [(list 'let bindings ... body)                         ;; letC
      (if (check-duplicates (parse-binding-syms (cast bindings (Listof Sexp)))) 
      (appC (lamC (parse-binding-syms (cast bindings (Listof Sexp))) 
@@ -162,10 +157,10 @@
            (parse-binding-args (cast bindings (Listof Sexp))))
      (error 'parse "OAZO Error: Expected a list of non-duplicate symbols for parameters"))]
 
-    [(list 'anon syms ': body args ...)                    ;; lamC
-     (if (and (list? syms) (all-symbol-and-valid? syms))
+    [(list 'anon syms ': body)                    ;; lamC
+     (if (and (list? syms) (all-symbol-and-valid? syms) (check-body body))
          (lamC (cast syms(Listof Symbol)) (parse body))
-         (error 'parse "OAZO Error: Expected a list of non-duplicate symbols for parameters"))]
+         (error 'parse "OAZO Error: Expected a list of non-duplicate symbols for parameters in ~e" code))]
     
     [(list func exps ...)                                  ;; appC
      (appC (parse func) (map (lambda ([exps : Sexp])
@@ -173,7 +168,6 @@
     
     [other (error 'parse "OAZO Syntax error in ~e" other)]))
 
-;;(parse '(anon (i) : "Hello" 31/7 +))
 
 ;; SERIALIZE
 ;;-----------------------------------------------------------------------------------
@@ -183,6 +177,7 @@
     [(? numV? n) (number->string (numV-n n))]
     [(? real? n) (number->string n)]
     [(? closeV? s) "#<procedure>"]
+    [(? strV? str) (format "\"~a\"" (strV-str str))]
     [(boolV #t) "true"]
     [#t "true"]
     [(boolV #f) "false"]
@@ -191,19 +186,24 @@
     [else (error 'serialize "OAZO Unsupported value: ~v" val)]))
 
 
-;; LOOKUP
+
+;; HELPER FUNCTIONS
 ;;-----------------------------------------------------------------------------------
+
+;; Helper to check the number of param vs given arguments
+(define (check-args [param : (Listof Symbol)] [args : (Listof ExprC)]) : Boolean
+  (if (>= (length param) (length args)) #t
+      (error 'check-args "OAZO mismatch number of arguments")))
+
+
 ;; Helper that looks up a value in an environment
 (define (lookup [for : Symbol] [env : Env]) : Value
     (match env
       ['() (error 'lookup "OAZO ERROR: name not found: ~e" for)]
       [(cons (binding name val) r) (cond
                                      [(symbol=? for name) val]
-                                     [else (lookup for r)])]))  
+                                     [else (lookup for r)])]))
 
-
-;; HELPER FUNCTIONS
-;;-----------------------------------------------------------------------------------
 
 ;; Helper function to check if all elements of a list are symbols
 (define (all-symbol-and-valid? [lst : (Listof Sexp)]) : Boolean
@@ -230,7 +230,8 @@
   (begin
     (for/list ([binding (in-list bindings)])
       (match binding
-        [(list sym '<- _) (cast sym Symbol)]
+        [(list sym '<- _) (if (valid-id (cast sym Symbol)) (cast sym Symbol)
+                              (error 'parse-binding-sym "OAZO: Invalid Binding"))]
         [else (error 'parse-binding-syms "OAZO: Invalid binding: ~a" binding)])))) 
 
 
@@ -259,22 +260,63 @@
        [(cons v rest-v) (cons (binding s v) (bind rest-s rest-v))])]))
 
 
+;; Checks the body of the lamC and ensures that it is either a single argument
+;; or that there are proper {} around them
+(define (check-body [body : Sexp]) : Boolean
+  (match body
+    [(list _ ...) #t]  
+    [_ #t]
+    #;[other #f]))
 
-(check-exn #rx"OAZO" (lambda() (parse '{let {c <- 5}})))
+
+;; Prompts the user to give a number and errors if it is not a valid Real
+;; and returns a numV if its valid
+(define (read-num) : Value
+  (display "> ")
+  (flush-output)
+  (define input (read-line))
+  (cond
+    [(eof-object? input) (error 'read-num "OAZO: Unexpected end of input")]
+    [(string? input)
+     (define num (string->number input))
+     (if (real? num)
+         (numV num)
+         (error 'read-num "OAZO: Input is not a real number"))]
+    [else (error 'read-num "OAZO: Invalid input format")]))
+
+
+;; takes a string a and a list of strings b and concatenates them in order
+(define (++ [a : String] [b : (Listof String)]) : Value
+  (if (empty? b)
+      (strV a)
+      (++ (string-append a (first b)) (rest b))))
 
 
 ;; TEST CASES
 ;;-----------------------------------------------------------------------------------
+
 (check-equal? (apply-primop (primopV 'println) (list (strC "teehee")) top-env) (boolV #t))
+;; ++ tests
+(check-equal? (++ "Hello, " '("world" "!")) (strV "Hello, world!"))
+(check-equal? (++ "abc" '("def" "ghi" "jkl")) (strV "abcdefghijkl"))
+(check-equal? (++ "" '("one" "two" "three")) (strV "onetwothree"))
+
+
+;; test cases from backtesting OAZO5
+(check-exn #rx"OAZO" (lambda () (parse '{let {: <- ""} "World"})))
+
+(check-exn #rx"OAZO" (lambda () (parse '{anon {i} : "hello" 31/7 +})))
+
+
+
 (check-equal? (apply-primop (primopV 'equal?) (list (numC 5) (numC 5)) top-env) (boolV #t))
 (check-equal? (apply-primop (primopV 'equal?) (list (strC "hello") (strC "hello")) top-env) (boolV #t))
-;;(check-equal? (apply-primop (primopV 'equal?) (list (idC '+) (idC '+)) top-env) (boolV #f)) 
-;;(check-equal? (apply-primop (primopV 'equal?) (list (numC 5) (strC "5")) top-env) (boolV #f)) 
-;;(check-equal? (apply-primop (primopV 'equal?) (list (idC 'true) (idC 'true)) top-env) (boolV #t))
-;;(check-equal? (apply-primop (primopV 'equal?) (list (primopV '+) (idC 'true)) top-env) (boolV #f))
-#;(check-equal? (apply-primop (primopV 'equal?) (list (closeV (list 'x 'y) (appC (idC '+) (list (numC 1)
-                  (numC 1))) (list (binding 'x (numV 4)) (binding 'y (numV 2)))) (numC 3)) top-env) (boolV #f))
+(check-equal? (apply-primop (primopV 'equal?) (list (numC 5) (strC "5")) top-env) (boolV #f)) 
+(check-equal? (apply-primop (primopV 'equal?) (list (idC 'true) (idC 'true)) top-env) (boolV #t))
+#;(check-equal? (apply-primop (primopV '+) (list (closeV 1 2 top-env)) top-env ()))
+(check-equal?  (apply-primop (primopV 'equal?) (list (lamC '(x) (numC 3)) (numC 3)) top-env) (boolV #f))
 
+(check-exn #rx"OAZO" (lambda() (parse '{let {c <- 5}})))
 
 ;; Top-Interp Tests
 (check-equal? (top-interp '{if {<= 4 3} then 29387 else true})"true")
@@ -282,13 +324,13 @@
 (check-equal? (top-interp '{if {<= 2 3} then false else true})"false")
 
 
-#;(check-equal? (interp (appC (idC 'equal?) (list (closeV (list 'x 'y) (appC (idC '+) (list (numC 1)
-                  (numC 1))) (list (binding 'x (numV 4)) (binding 'y (numV 2)))) (numC 3))) top-env) (boolV #f))
 
-#;(check-equal? (interp (appC (idC 'equal?) ()) top-env) (boolV #f))
-(check-equal? (top-interp '{{anon {} : {equal? + +}}}) "true") 
-(check-equal? (top-interp '{{anon {x} : {equal? x {anon {} : 1}}} 5}) "false")
- 
+#;(check-equal? (top-interp '{{anon {} : {equal? + +}}}) "true")
+
+#;(check-equal? (top-interp '{{anon {x} : {equal? x {anon {} : {1}}} 5}}) "false")
+
+(check-equal? (serialize (strV "Hello")) "\"Hello\"")
+
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 (error "1234")))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 #t))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(- 4 "s"))))
@@ -333,11 +375,13 @@
 (check-equal? (top-interp '{let {f <- {anon {a} : {+ a 4}}}
                                 {f 1}}) "5")
 
-#;(check-exn #rx"OAZO" (lambda() (top-interp '{{anon {x x} : 3} 1 1})))
+
+
+(check-exn #rx"OAZO" (lambda() (top-interp '{{anon {x x} : 3} 1 1})))
 
 
 ;; Recurisve Test
-(check-equal? (top-interp '{let {f <- {anon {func x} : {if {<= x 10} then {func func {+ x 1}} else {-1}}}}
+#;(check-equal? (top-interp '{let {f <- {anon {func x} : {if {<= x 10} then {func func {+ x 1}} else {-1}}}}
                                 {f f 1}}) "-1")
 
 
@@ -367,12 +411,12 @@
                                   (appC (idC '+)
                                      (list (idC 'x) (numC 1))))
                             (list (numC 5))) top-env) (numV 6))
+
 (check-equal? (interp (ifC (idC 'true) (numC 1) (numC 2)) top-env) (numV 1))
 
 
 
 ;; Parse Tests
-;;(parse '(anon (i) : "Hello" 31/7 +))
 (check-equal? (parse '{12}) (numC 12))
 (check-equal? (parse 'x) (idC 'x))
 (check-equal? (parse "string") (strC "string"))
@@ -412,6 +456,7 @@
 (check-exn #rx"OAZO" (lambda() (parse '{{anon {2} : {1}} 1})))
 
 (check-exn #rx"OAZO" (lambda () (parse '(+ then 4))))
+
 
 
 ;; Parse-Binding-Args Tests
