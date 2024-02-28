@@ -41,6 +41,7 @@
         (binding 'equal? (primopV 'equal?))
         (binding 'read-num (primopV 'read-num))
         (binding '++ (primopV '++))
+        (binding 'seq (primopV 'seq))
         (binding 'error (primopV 'error))))
 
 
@@ -123,7 +124,8 @@
                        (not(or(primopV? operand1)(primopV? operand2))))
                    (boolV (equal? operand1 operand2))]))]
             [(primopV 'read-num) (read-num)]
-            [(primopV '++) (++ (serialize f) (map serialize r))])]))]))
+            [(primopV '++) (++ (serialize f) (map serialize r))]
+            [(primopV 'seq) (seq f r env)])]))]))
 
 
 ;; PARSE
@@ -280,11 +282,40 @@
       (strV a)
       (++ (string-append a (first b)) (rest b))))
 
+;; Checks if an item is any of the ExprC types
+(define (check-ExprC? [expr : Any]) : Boolean
+  (match expr
+    [(numC _) #t]
+    [(idC _) #t]
+    [(appC _ _) #t]
+    [(ifC _ _ _) #t]
+    [(strC _) #t]
+    [else #f]))
+
+;; Evaluate a sequence of args and return the result of the last
+(define (seq [a : Any] [b : (Listof Any)] [env : Env]) : Value
+  (if (empty? b)
+      (if (check-ExprC? a)
+          (interp (cast a ExprC) env)
+          (error 'seq "OAZO: Invalid input: ~a" a))
+      (seq (first b) (rest b) env)))
+
 
 ;; TEST CASES
 ;;-----------------------------------------------------------------------------------
 
+;; seq tests
+(check-equal? (top-interp '{seq
+                             {+ 1 2}
+                             {+ 2 3}}) 5)
 
+;; a test to use once seq is working
+#;{seq
+  {println "What is your favorite integer between 6 and 7?"}
+  {let {your-number <- {read-num}}
+  {println {++ "Interesting. You picked " your-number ". good choice!"}}}}
+
+                     
 ;; ++ tests
 (check-equal? (++ "Hello, " '("world" "!")) (strV "Hello, world!"))
 (check-equal? (++ "abc" '("def" "ghi" "jkl")) (strV "abcdefghijkl"))
@@ -293,7 +324,6 @@
 
 ;; test cases from backtesting OAZO5
 (check-exn #rx"OAZO" (lambda () (parse '{let {: <- ""} "World"})))
-
 (check-exn #rx"OAZO" (lambda () (parse '{anon {i} : "hello" 31/7 +})))
 
 
@@ -304,7 +334,6 @@
 (check-equal? (apply-primop (primopV 'equal?) (list (idC 'true) (idC 'true)) top-env) (boolV #t))
 #;(check-equal? (apply-primop (primopV '+) (list (closeV 1 2 top-env)) top-env ()))
 (check-equal?  (apply-primop (primopV 'equal?) (list (lamC '(x) (numC 3)) (numC 3)) top-env) (boolV #f))
-
 (check-exn #rx"OAZO" (lambda() (parse '{let {c <- 5}})))
 
 ;; Top-Interp Tests
