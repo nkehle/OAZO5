@@ -79,16 +79,9 @@
      
     [(lamC a body) (closeV a body env)]))
 
-(define (interp-primop [args : (Listof ExprC)] [env : Env]) : (Listof Any)
+(define (interp-primop [args : (Listof ExprC)] [env : Env]) : (Listof Value)
  (let ([arg-values (map (λ ([arg : ExprC])
-                              (match (interp arg env)
-                                [(numV n) n]
-                                [(strV s) s]
-                                [(boolV b) b]
-                                [(primopV p) p]
-                                [(closeV arg body e) arg]))
-                            args)])
-   arg-values))
+                              (interp arg env)) args)]) arg-values))
 
 
 ;; Takes a primop an list of args and the environment and ouputs the value 
@@ -96,38 +89,37 @@
   (cond
     [(equal? primop (primopV 'read-num)) (read-num)]
     #;[(> (length args) 2) (error 'apply "OAZO too many values for primitave operation ~v" args)]
-    [(equal? args '())(error 'apply "OAZO no args given ~v" args)]
+    [(equal? args '()) (error 'apply "OAZO no args given ~v" args)]
     [else
-     (define a-v : (Listof Any) (interp-primop args env))
+     (define a-v : (Listof Value) (interp-primop args env))
      (match a-v
-       ;;['() (error 'apply-primop "OAZO ERROR: No args given")]
        [(list str)
         (match primop 
-          [(primopV 'println) (displayln (first a-v)) (boolV #t)]
+          [(primopV 'println) (displayln (serialize (first a-v))) (boolV #t)]
           [(primopV 'error) (error 'apply-primop "OAZO ERROR: user-error")]
           [else (error 'apply-primop "OAZO ERROR: Not enough args for primops")])]
-       
+      
        [else
-        (define f : Any (first a-v))
-        (define second : Any (first (rest a-v)))
+        (define f : Value (first a-v))
+        (define second : Value (first (rest a-v)))
        
         (match primop 
           [(primopV '+)
-           (if (and (real? f) (real? second)) (numV (+ f second))
-               (error 'apply-primop "OAZO ERROR: Non-numeric argument for add"))] ;; for many adds
+           (if (and (numV? f) (numV? second)) (numV (+ (numV-n f) (numV-n second)))
+               (error 'apply-primop "OAZO ERROR: Non-numeric argument for add"))]
           [(primopV '-)
-           (if (and (real? f) (real? second)) (numV (- f second))
+           (if (and (numV? f) (numV? second)) (numV (- (numV-n f) (numV-n second)))
                (error 'apply-primop "OAZO ERROR: Non-numeric argument for sub"))]
           [(primopV '*)
-           (if (and (real? f) (real? second)) (numV (* f second))
+           (if (and (numV? f) (numV? second)) (numV (* (numV-n f) (numV-n second)))
                (error 'apply-primop "OAZO ERROR: Non-numeric argument for mult"))]
           [(primopV '/) 
            (cond
-             [(equal? 0 second) (error 'apply-primop "OAZO ERROR: Divide by zero!")]
-             [else (if (and (real? f) (real? second)) (numV (/ f second))
+             [(equal? (numV 0) second) (error 'apply-primop "OAZO ERROR: Divide by zero!")]
+             [else (if (and (numV? f) (numV? second)) (numV (/ (numV-n f) (numV-n second)))
                        (error 'apply-primop "OAZO ERROR: Non-numeric argument for div"))])]
           [(primopV '<=)
-           (if (and (real? f) (real? second)) (boolV (<= f second))
+           (if (and (numV? f) (numV? second)) (boolV (<= (numV-n f) (numV-n second)))
                (error 'apply-primop "OAZO ERROR: Non-numeric argument for <="))] 
           [(primopV 'equal?) 
            (let ([operand1 f]
@@ -138,7 +130,7 @@
                [else (boolV #f)]))]    
             #;[(primopV 'read-num) (read-num)] 
             [(primopV '++) (strV (++ (map serialize (map (lambda ([x : ExprC]) (interp x env)) args))))] 
-            [(primopV 'seq) (seq (first args) (rest args) env)])])])) 
+            [(primopV 'seq) (seq (first a-v) (rest a-v) env)])])])) 
 
  
 ;; PARSE
@@ -307,17 +299,29 @@
 
 
 ;; Evaluate a sequence of args and return the result of the last
-(define (seq [a : Any] [b : (Listof Any)] [env : Env]) : Value
-  ;;(displayln a)
-   (if (empty? b)
-      (if (check-ExprC? a)
-          (interp (cast a ExprC) env)
-          (error 'seq "OAZO: Invalid input: ~a" a))
+(define (seq [a : Value] [b : (Listof Value)] [env : Env]) : Value
+   (if (empty? b) a
       (seq (first b) (rest b) env)))
-  #;(if (empty? b)
-      (interp (parse(cast a Sexp)) env)
-      (seq (first b) (rest b) env))
 
+
+#;(top-interp '{seq
+              {println "line1"}
+              {println "line2"}
+              {println "line3"}})
+
+
+#;(top-interp '{seq
+              {+ 1 2}
+              {+ 2 3}
+              {* 5 10}})
+
+#;(cond
+  [(empty? b) ((if (check-ExprC? a)
+                   (interp (cast a ExprC) env)
+                   (error 'seq "OAZO: Invalid input: ~a" a)))]
+  [else ((if (check-ExprC? b)
+                   (interp (cast b ExprC) env)
+                   (error 'seq "OAZO: Invalid input: ~a" b)) (seq (first b) (rest b)))])
 
 ;; TEST CASES
 ;;-----------------------------------------------------------------------------------
@@ -330,13 +334,17 @@
 #;(top-interp '{println{++ "pie" " " "hi"}})
 
 
-#;(top-interp '{seq
+
+(top-interp '{seq
               {println "What is your favorite integer between 6 and 7?"}
               {let {your-number <- {read-num}}
               {println {++ "Interesting. You picked " your-number ". good choice!"}}}})
 
 
-(top-interp '{})
+
+
+
+
 
 ;; a test to use once seq is working
 #;{seq
