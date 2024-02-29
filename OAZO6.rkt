@@ -135,11 +135,11 @@
                [(and(not(or(closeV? operand1)(closeV? operand2)))(not(or(primopV? operand1)(primopV? operand2))))
                 (boolV (equal? operand1 operand2))]
                [else (boolV #f)]))]    
-            [(primopV 'read-num) (read-num)]
-            [(primopV '++) (++ (serialize f) (map serialize (rest a-v)))]
-            [(primopV 'seq) (seq (first args) (rest args) env)])])]))
+            [(primopV 'read-num) (read-num)] 
+            [(primopV '++) (strV (++ (map serialize (map (lambda ([x : ExprC]) (interp x env)) args))))] 
+            [(primopV 'seq) (seq (first args) (rest args) env)])])])) 
 
-
+ 
 ;; PARSE
 ;;-----------------------------------------------------------------------------------
 ;; Takes in a Sexp of concrete syntax and outputs the AST for the OAZO language
@@ -180,7 +180,7 @@
     [(? numV? n) (number->string (numV-n n))]
     [(? real? n) (number->string n)]
     [(? closeV? s) "#<procedure>"]
-    [(? strV? str) (format "\"~a\"" (strV-str str))]
+    [(? strV? str) (format "~a" (strV-str str))]
     [(boolV #t) "true"]
     [#t "true"]
     [(boolV #f) "false"]
@@ -289,10 +289,11 @@
 
 
 ;; takes a string a and a list of strings b and concatenates them in order
-(define (++ [a : String] [b : (Listof String)]) : Value
-  (if (empty? b)
-      (strV a)
-      (++ (string-append a (first b)) (rest b))))
+(define (++ [a : (Listof String)]) : String
+  (match a
+    ['() ""] 
+    [(cons f r) (string-append f (++ r))])) 
+       
 ;; Checks if an item is any of the ExprC types
 (define (check-ExprC? [expr : Any]) : Boolean
   (match expr
@@ -302,6 +303,7 @@
     [(ifC _ _ _) #t]
     [(strC _) #t]
     [else #f]))
+
 
 ;; Evaluate a sequence of args and return the result of the last
 (define (seq [a : Any] [b : (Listof Any)] [env : Env]) : Value
@@ -324,18 +326,19 @@
                              {+ 1 2}
                              {+ 2 3}}) "5")
 
+(top-interp '{println{++ "pie" "hi"}}) 
 ;; a test to use once seq is working
 #;{seq
   '{println "What is your favorite integer between 6 and 7?"}
   '{println "Interesting. You picked "}} 
 
 ;;{let {your-number <- {read-num}}
-;;{println {++ "Interesting. You picked " your-number ". good choice!"}}
+;{println {++ "Interesting. You picked " your-number ". good choice!"}}
                      
 ;; ++ tests
-(check-equal? (++ "Hello, " '("world" "!")) (strV "Hello, world!"))
-(check-equal? (++ "abc" '("def" "ghi" "jkl")) (strV "abcdefghijkl"))
-(check-equal? (++ "" '("one" "two" "three")) (strV "onetwothree"))
+(check-equal? (++ {list "Hello, " "world" "!"}) "Hello, world!")
+(check-equal? (++ {list "abc" "def" "ghi" "jkl"}) "abcdefghijkl")
+(check-equal? (++ {list "" "one" "two" "three"}) "onetwothree") 
 
 
 ;; test cases from backtesting OAZO5
@@ -344,12 +347,6 @@
 
 ;;println test
 (check-equal? (apply-primop (primopV 'println) (list (strC "teehee")) top-env) (boolV #t))
-
-;; ++ tests
-(check-equal? (++ "Hello, " '("world" "!")) (strV "Hello, world!"))
-(check-equal? (++ "abc" '("def" "ghi" "jkl")) (strV "abcdefghijkl"))
-(check-equal? (++ "" '("one" "two" "three")) (strV "onetwothree"))
-
 
 ;; test cases from backtesting OAZO5
 (check-exn #rx"OAZO" (lambda () (parse '{let {: <- ""} "World"})))
@@ -378,7 +375,7 @@
 
 #;(check-equal? (top-interp '{{anon {x} : {equal? x {anon {} : {1}}} 5}}) "false")
 
-(check-equal? (serialize (strV "Hello")) "\"Hello\"")
+;;(check-equal? (serialize (strV "Hello")) "\"Hello\"")
 
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 (error "1234")))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 #t))))
