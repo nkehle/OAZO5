@@ -39,9 +39,11 @@
         (binding '/ (primopV '/))
         (binding '<= (primopV '<=))
         (binding 'equal? (primopV 'equal?))
+        (binding 'println (primopV 'println))
         (binding 'read-num (primopV 'read-num))
         (binding '++ (primopV '++))
-        (binding 'error (primopV 'error))))
+        (binding 'seq (primopV 'seq))
+        (binding 'error (primopV 'error)))) 
 
 
 ;; TOP-INTERP
@@ -125,7 +127,7 @@
                        (error 'apply-primop "OAZO ERROR: Non-numeric argument for div"))])]
           [(primopV '<=)
            (if (and (real? f) (real? second)) (boolV (<= f second))
-               (error 'apply-primop "OAZO ERROR: Non-numeric argument for <="))]
+               (error 'apply-primop "OAZO ERROR: Non-numeric argument for <="))] 
           [(primopV 'equal?) 
            (let ([operand1 f]
                  [operand2 second])   
@@ -134,7 +136,8 @@
                 (boolV (equal? operand1 operand2))]
                [else (boolV #f)]))]    
             [(primopV 'read-num) (read-num)]
-            [(primopV '++) (++ (serialize f) (map serialize (rest a-v)))])])]))
+            [(primopV '++) (++ (serialize f) (map serialize (rest a-v)))]
+            [(primopV 'seq) (seq (first args) (rest args) env)])])]))
 
 
 ;; PARSE
@@ -267,7 +270,7 @@
     [(list _ ...) #t]  
     [_ #t]
     #;[other #f]))
-
+ 
 
 ;; Prompts the user to give a number and errors if it is not a valid Real
 ;; and returns a numV if its valid
@@ -290,12 +293,58 @@
   (if (empty? b)
       (strV a)
       (++ (string-append a (first b)) (rest b))))
+;; Checks if an item is any of the ExprC types
+(define (check-ExprC? [expr : Any]) : Boolean
+  (match expr
+    [(numC _) #t]
+    [(idC _) #t]
+    [(appC _ _) #t]
+    [(ifC _ _ _) #t]
+    [(strC _) #t]
+    [else #f]))
+
+;; Evaluate a sequence of args and return the result of the last
+(define (seq [a : Any] [b : (Listof Any)] [env : Env]) : Value
+  ;;(displayln a)
+   (if (empty? b)
+      (if (check-ExprC? a)
+          (interp (cast a ExprC) env)
+          (error 'seq "OAZO: Invalid input: ~a" a))
+      (seq (first b) (rest b) env)))
+  #;(if (empty? b)
+      (interp (parse(cast a Sexp)) env)
+      (seq (first b) (rest b) env))
 
 
 ;; TEST CASES
 ;;-----------------------------------------------------------------------------------
 
+;; seq tests
+(check-equal? (top-interp '{seq
+                             {+ 1 2}
+                             {+ 2 3}}) "5")
+
+;; a test to use once seq is working
+#;{seq
+  '{println "What is your favorite integer between 6 and 7?"}
+  '{println "Interesting. You picked "}} 
+
+;;{let {your-number <- {read-num}}
+;;{println {++ "Interesting. You picked " your-number ". good choice!"}}
+                     
+;; ++ tests
+(check-equal? (++ "Hello, " '("world" "!")) (strV "Hello, world!"))
+(check-equal? (++ "abc" '("def" "ghi" "jkl")) (strV "abcdefghijkl"))
+(check-equal? (++ "" '("one" "two" "three")) (strV "onetwothree"))
+
+
+;; test cases from backtesting OAZO5
+(check-exn #rx"OAZO" (lambda () (parse '{let {: <- ""} "World"})))
+(check-exn #rx"OAZO" (lambda () (parse '{anon {i} : "hello" 31/7 +})))
+
+;;println test
 (check-equal? (apply-primop (primopV 'println) (list (strC "teehee")) top-env) (boolV #t))
+
 ;; ++ tests
 (check-equal? (++ "Hello, " '("world" "!")) (strV "Hello, world!"))
 (check-equal? (++ "abc" '("def" "ghi" "jkl")) (strV "abcdefghijkl"))
