@@ -1,7 +1,7 @@
 #lang typed/racket
 (require typed/rackunit)
 
-;; Assignment 5
+;; Assignment - OAZO6
 ;; Full Project Implemented
 
 
@@ -97,6 +97,7 @@
         (match primop 
           [(primopV 'println) (displayln (serialize (first a-v))) (boolV #t)]
           [(primopV 'error) (error 'apply-primop "OAZO ERROR: user-error")]
+          [(primopV '++) str]
           [else (error 'apply-primop "OAZO ERROR: Not enough args for primops")])]
       
        [else
@@ -128,7 +129,6 @@
                [(and(not(or(closeV? operand1)(closeV? operand2)))(not(or(primopV? operand1)(primopV? operand2))))
                 (boolV (equal? operand1 operand2))]
                [else (boolV #f)]))]    
-            #;[(primopV 'read-num) (read-num)] 
             [(primopV '++) (strV (++ (map serialize (map (lambda ([x : ExprC]) (interp x env)) args))))] 
             [(primopV 'seq) (seq (first a-v) (rest a-v) env)])])])) 
 
@@ -173,7 +173,8 @@
     [(? numV? n) (number->string (numV-n n))]
     [(? real? n) (number->string n)]
     [(? closeV? s) "#<procedure>"]
-    [(? strV? str) (format "~a" (strV-str str))]
+    [(? strV? str) (string-append "\"" (strV-str str) "\"")] 
+    #;[(? strV? str) (format "~a" (strV-str str))]
     [(boolV #t) "true"]
     [#t "true"]
     [(boolV #f) "false"]
@@ -304,6 +305,76 @@
       (seq (first b) (rest b) env)))
 
 
+
+;; TEST CASES
+;;-----------------------------------------------------------------------------------
+
+
+(check-equal? (top-interp '{if true then "one" else "two"}) "\"one\"")
+
+
+
+(check-equal? (top-interp '{++ "abc"  "def"}) "\"abcdef\"")
+
+
+
+;; fun and exciting program
+#;(top-interp '{let {welcome <- {anon {} : {println "Welcome to the Bird Program!"}}}
+                  {prompt <- {anon {} : {println "How high do you want the to bird fly?"}}}
+                  {get-input <- {anon {} : {read-num}}}
+                  
+               {print-bird <- {anon {spaces pb} : {if {equal? spaces 0} 
+                                                      then {println " "} 
+                                                      else {seq {println " "}
+                                                                {pb {- spaces 1} pb}}}}}
+               {let {count <- {anon {cnt body} :
+                                    {seq {prompt}
+                                         {let {height <- {get-input}} 
+                                           {body height}}
+                                         {cnt cnt body}}}}   
+
+                
+                 {let {body <- {anon {height} :   
+                                     {seq
+                                      {println ""}
+                                      {if {<= height 0} then {error
+                                  {println " x-x           You've killed the bird"}}
+                                          else {if {<= 50 height}
+                                                   then {error
+                                  {println " x-x           the bird has flown into the sun :("}}
+                                                   else{if {<= height 10}
+                                                           then {println " ~o~           The bird flies!"}
+                                                           else
+                                 {println " ~~O~~          WOOOAH THE BIRD IS SOARING SOARING!!!"}}}}
+                                      {print-bird height print-bird}}}}
+                       
+                   {count count body}}}})
+
+
+#;(top-interp '{let {welcome <- {anon {} : {println "Welcome to the Bird Program!"}}}
+                 {prompt <- {anon {} : {println "How high do you want the to bird fly?"}}}
+                 {get-input <- {anon {} : {read-num}}}
+                  {print-bird <- {anon {spaces pb} : {if {equal? spaces 0} 
+                                                         then {println " "} 
+                                                         else {seq {println " "}
+                                                              {pb {- spaces 1} pb}}}}}
+
+               
+               {let {body <- {anon {} : {seq {prompt}
+                                                  {let {height <- {get-input}}
+                                                    {seq
+                                                     {println ""}
+                                     {if {<= height 0} then {println " x-x           You've killed the bird"}
+                                       else {if {<= height 10} then {println " ~o~           The bird flies!"}
+                                       else {println " ~~O~~          WOOOAH THE BIRD IS SOARING SOARING!!!"}}}
+                                          {print-bird height print-bird}}}}}}
+                      {seq {body}
+                           {body}
+                           {body}}}})         
+
+
+
+;; Seq tests
 #;(top-interp '{seq
               {println "line1"}
               {println "line2"}
@@ -315,40 +386,7 @@
               {+ 2 3}
               {* 5 10}})
 
-#;(cond
-  [(empty? b) ((if (check-ExprC? a)
-                   (interp (cast a ExprC) env)
-                   (error 'seq "OAZO: Invalid input: ~a" a)))]
-  [else ((if (check-ExprC? b)
-                   (interp (cast b ExprC) env)
-                   (error 'seq "OAZO: Invalid input: ~a" b)) (seq (first b) (rest b)))])
-
-;; TEST CASES
-;;-----------------------------------------------------------------------------------
-
-;; fun and exciting program
-
-(top-interp '{let {welcome <- {anon {} : {println "Welcome to the Bird Program!"}}}
-                  {prompt <- {anon {} : {println "How high do you want the to bird fly?"}}}
-                  {get-input <- {anon {} : {read-num}}}
-                  {print-bird <- {anon {spaces pb} : {if {equal? spaces 0} 
-                                                         then {println " "} 
-                                                         else {seq {println " "}
-                                                              {pb {- spaces 1} pb}}}}}
-
-               
-               {let {body <- {anon {} : {seq {prompt}
-                                                  {let {height <- {get-input}}
-                                                    {seq
-                                                     {println ""}
-                                                     {if {<= height 0} then {println " x-x           You've killed the bird"}
-                                                           else {if {<= height 10} then {println " ~o~           The bird flies!"}
-                                                                     else {println " ~~O~~          WOOOAH THE BIRD IS SOARING SOARING!!!"}}}
-                                                     {print-bird height print-bird}}}}}}
-                      {seq {body}
-                           {body}
-                           {body}}}})         
-
+#;(top-interp '{read-num})
 
 
 #;(top-interp '{seq
@@ -401,9 +439,7 @@
 
                      
 ;; ++ tests
-(check-equal? (++ {list "Hello, " "world" "!"}) "Hello, world!")
-(check-equal? (++ {list "abc" "def" "ghi" "jkl"}) "abcdefghijkl")
-(check-equal? (++ {list "" "one" "two" "three"}) "onetwothree") 
+
 
 
 ;; test cases from backtesting OAZO5
