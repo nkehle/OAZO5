@@ -326,6 +326,56 @@
 ;; TEST CASES
 ;;-----------------------------------------------------------------------------------
 
+;; fun and exciting program
+
+(top-interp '{let {welcome <- {anon {} : {println "Welcome to the Bird Program!"}}}
+                  {get-input <- {anon {} : {seq {println "Please enter a number:"}
+                                                {read-num}}}}
+                  {print-bird <- {anon {spaces pb} : {if {equal? spaces 0} 
+                                                         then {println " "} 
+                                                         else {seq {println " "}
+                                                              {pb {- spaces 1} pb}}}}}
+               {seq {welcome}
+                    {get-input}
+                    {println ""}
+                    {println " ~O~          Woah the bird is flying"}
+
+                    {print-bird 5 print-bird}}})         
+
+
+
+#;(top-interp '{seq
+              {println "outside line 1"}
+              {println "outside line 2"}
+              {seq {println "inside line 1"}
+                   {println "inside line 2"}}})
+
+
+#;(top-interp '{let {empty <- 15}
+               {let {empty? <- {anon (x) : {equal? x empty}}}
+                 {cons <- {anon {f r} :
+                                {anon {key} :
+                                      {if {equal? key 0}
+                                          then
+                                          f
+                                          else
+                                          r}}}}
+                 {first <- {anon {pair} :
+                                 {pair 0}}}
+                 {rest <- {anon {pair} :
+                                {pair 1}}}
+                 {let {sum-list <- {anon (l self) :
+                                         {if {empty? l}
+                                             then
+                                             0
+                                             else
+                                             {+ {first l}
+                                                {self {rest l} self}}}}}
+                   {my-list <- {cons 3 {cons 24 {cons 8 empty}}}}
+                   {println {++ "The sum of the list is " {sum-list my-list sum-list} "."}}}}}
+            
+)
+#|
 ;; seq tests
 #;(check-equal? (top-interp '{seq
                              {+ 1 2}
@@ -335,21 +385,12 @@
 
 
 
-(top-interp '{seq
+(check-equal? (top-interp '{seq
               {println "What is your favorite integer between 6 and 7?"}
               {let {your-number <- {read-num}}
-              {println {++ "Interesting. You picked " your-number ". good choice!"}}}})
+              {println {++ "Interesting. You picked " your-number ". good choice!"}}}}) "true")
 
 
-
-
-
-
-
-;; a test to use once seq is working
-#;{seq
-  '{println "What is your favorite integer between 6 and 7?"}
-  '{println "Interesting. You picked "}} 
 
                      
 ;; ++ tests
@@ -620,3 +661,4 @@
 ;; Check-args test
 (check-equal? (check-args (list 'x) (list (numC 1))) #t)
 (check-exn #rx"OAZO" (lambda() (check-args (list 'x) (list (numC 1) (numC 2)))))
+|#
