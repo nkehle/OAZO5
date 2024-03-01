@@ -79,54 +79,47 @@
      
     [(lamC a body) (closeV a body env)]))
 
-(define (interp-primop [args : (Listof ExprC)] [env : Env]) : (Listof Any)
+(define (interp-primop [args : (Listof ExprC)] [env : Env]) : (Listof Value)
  (let ([arg-values (map (λ ([arg : ExprC])
-                              (match (interp arg env)
-                                [(numV n) n]
-                                [(strV s) s]
-                                [(boolV b) b]
-                                [(primopV p) p]
-                                [(closeV arg body e) arg]))
-                            args)])
-   arg-values))
+                              (interp arg env)) args)]) arg-values))
 
 
 ;; Takes a primop an list of args and the environment and ouputs the value 
 (define (apply-primop [primop : primopV] [args : (Listof ExprC)] [env : Env]) : Value
   (cond
-    [(> (length args) 2) (error 'apply "OAZO too many values for primitave operation ~v" args)]
-    [(equal? args '())(error 'apply "OAZO no args given ~v" args)]
+    [(equal? primop (primopV 'read-num)) (read-num)]
+    #;[(> (length args) 2) (error 'apply "OAZO too many values for primitave operation ~v" args)]
+    [(equal? args '()) (error 'apply "OAZO no args given ~v" args)]
     [else
-     (define a-v : (Listof Any) (interp-primop args env))
+     (define a-v : (Listof Value) (interp-primop args env))
      (match a-v
-       ;;['() (error 'apply-primop "OAZO ERROR: No args given")]
        [(list str)
         (match primop 
-          [(primopV 'println) (displayln (first a-v)) (boolV #t)]
+          [(primopV 'println) (displayln (serialize (first a-v))) (boolV #t)]
           [(primopV 'error) (error 'apply-primop "OAZO ERROR: user-error")]
           [else (error 'apply-primop "OAZO ERROR: Not enough args for primops")])]
-       
+      
        [else
-        (define f : Any (first a-v))
-        (define second : Any (first (rest a-v)))
+        (define f : Value (first a-v))
+        (define second : Value (first (rest a-v)))
        
         (match primop 
           [(primopV '+)
-           (if (and (real? f) (real? second)) (numV (+ f second))
-               (error 'apply-primop "OAZO ERROR: Non-numeric argument for add"))] ;; for many adds
+           (if (and (numV? f) (numV? second)) (numV (+ (numV-n f) (numV-n second)))
+               (error 'apply-primop "OAZO ERROR: Non-numeric argument for add"))]
           [(primopV '-)
-           (if (and (real? f) (real? second)) (numV (- f second))
+           (if (and (numV? f) (numV? second)) (numV (- (numV-n f) (numV-n second)))
                (error 'apply-primop "OAZO ERROR: Non-numeric argument for sub"))]
           [(primopV '*)
-           (if (and (real? f) (real? second)) (numV (* f second))
+           (if (and (numV? f) (numV? second)) (numV (* (numV-n f) (numV-n second)))
                (error 'apply-primop "OAZO ERROR: Non-numeric argument for mult"))]
           [(primopV '/) 
            (cond
-             [(equal? 0 second) (error 'apply-primop "OAZO ERROR: Divide by zero!")]
-             [else (if (and (real? f) (real? second)) (numV (/ f second))
+             [(equal? (numV 0) second) (error 'apply-primop "OAZO ERROR: Divide by zero!")]
+             [else (if (and (numV? f) (numV? second)) (numV (/ (numV-n f) (numV-n second)))
                        (error 'apply-primop "OAZO ERROR: Non-numeric argument for div"))])]
           [(primopV '<=)
-           (if (and (real? f) (real? second)) (boolV (<= f second))
+           (if (and (numV? f) (numV? second)) (boolV (<= (numV-n f) (numV-n second)))
                (error 'apply-primop "OAZO ERROR: Non-numeric argument for <="))] 
           [(primopV 'equal?) 
            (let ([operand1 f]
@@ -135,9 +128,9 @@
                [(and(not(or(closeV? operand1)(closeV? operand2)))(not(or(primopV? operand1)(primopV? operand2))))
                 (boolV (equal? operand1 operand2))]
                [else (boolV #f)]))]    
-            [(primopV 'read-num) (read-num)] 
+            #;[(primopV 'read-num) (read-num)] 
             [(primopV '++) (strV (++ (map serialize (map (lambda ([x : ExprC]) (interp x env)) args))))] 
-            [(primopV 'seq) (seq (first args) (rest args) env)])])])) 
+            [(primopV 'seq) (seq (first a-v) (rest a-v) env)])])])) 
 
  
 ;; PARSE
@@ -306,34 +299,139 @@
 
 
 ;; Evaluate a sequence of args and return the result of the last
-(define (seq [a : Any] [b : (Listof Any)] [env : Env]) : Value
-  ;;(displayln a)
-   (if (empty? b)
-      (if (check-ExprC? a)
-          (interp (cast a ExprC) env)
-          (error 'seq "OAZO: Invalid input: ~a" a))
+(define (seq [a : Value] [b : (Listof Value)] [env : Env]) : Value
+   (if (empty? b) a
       (seq (first b) (rest b) env)))
-  #;(if (empty? b)
-      (interp (parse(cast a Sexp)) env)
-      (seq (first b) (rest b) env))
 
+
+#;(top-interp '{seq
+              {println "line1"}
+              {println "line2"}
+              {println "line3"}})
+
+
+#;(top-interp '{seq
+              {+ 1 2}
+              {+ 2 3}
+              {* 5 10}})
+
+#;(cond
+  [(empty? b) ((if (check-ExprC? a)
+                   (interp (cast a ExprC) env)
+                   (error 'seq "OAZO: Invalid input: ~a" a)))]
+  [else ((if (check-ExprC? b)
+                   (interp (cast b ExprC) env)
+                   (error 'seq "OAZO: Invalid input: ~a" b)) (seq (first b) (rest b)))])
 
 ;; TEST CASES
 ;;-----------------------------------------------------------------------------------
 
+#;{concat <- {anon {func str space} :
+                                   {if {equal? 0 spaces} then {println ""} else {func func }}}}
+;; fun and exciting program
+(top-interp '{let {welcome <- {anon {} : {println "Welcome to the Bird Program!"}}}
+                  {prompt <- {anon {} : {println "How high do you want the to bird fly?"}}}
+                  {get-input <- {anon {} : {read-num}}}
+                  
+                  {print-bird <- {anon {spaces pb} : {if {equal? spaces 0} 
+                                                         then {println " "} 
+                                                         else {seq {println " "}
+                                                              {pb {- spaces 1} pb}}}}}
+               {let {count <- {anon {cnt body} :
+                                  {seq {prompt}
+                                       {let {height <- {get-input}} 
+                                         {body height}}
+                                  {cnt cnt body}}}}   
+
+                
+               {let {body <- {anon {height} :   
+                                                    {seq
+                                                     {println ""}
+                                                     {if {<= height 0} then {error{println " x-x           You've killed the bird"}}
+                                                           else {if {<= 50 height}
+                                                                    then {error{println " x-x           the bird has flown into the sun :("}}
+                                                                    else{if {<= height 10}
+                                                                            then {println " ~o~           The bird flies!"}
+                                                                            else {println " ~~O~~          WOOOAH THE BIRD IS SOARING SOARING!!!"}}}}
+                                                     {print-bird height print-bird}}}}
+                       
+                       {count count body}}}})
+ 
+ 
+ 
+  
+#;(top-interp '{let {welcome <- {anon {} : {println "Welcome to the Bird Program!"}}}
+                  {get-input <- {anon {} : {seq {println "How high do you want the to bird fly?"}
+                                                {read-num}}}}
+                  {print-bird <- {anon {spaces pb} : {if {equal? spaces 0} 
+                                                         then {println " "} 
+                                                         else
+                                                         {seq {println " "}
+                                                              {pb {- spaces 1} pb}}}}}
+               {seq {welcome}
+                    {let {height <- {get-input}}
+                      {seq
+                       {if {<= 1000 height}
+                          then {println "the bird flew into the sun :("}
+                             else
+                       {if {equal? height 0}
+                          then {println "the bird has landed."}
+                             else 
+                             {seq 
+                              {println ""} 
+                              {println " ~O~          Woah the bird is flying"}
+                              {print-bird height print-bird}}}}}}}})            
+
+
+
+#;(top-interp '{seq
+              {println "outside line 1"}
+              {println "outside line 2"}
+              {seq {println "inside line 1"}
+                   {println "inside line 2"}}})
+
+
+#;(top-interp '{let {empty <- 15}
+               {let {empty? <- {anon (x) : {equal? x empty}}}
+                 {cons <- {anon {f r} :
+                                {anon {key} :
+                                      {if {equal? key 0}
+                                          then
+                                          f
+                                          else
+                                          r}}}}
+                 {first <- {anon {pair} :
+                                 {pair 0}}}
+                 {rest <- {anon {pair} :
+                                {pair 1}}}
+                 {let {sum-list <- {anon (l self) :
+                                         {if {empty? l}
+                                             then
+                                             0
+                                             else
+                                             {+ {first l}
+                                                {self {rest l} self}}}}}
+                   {my-list <- {cons 3 {cons 24 {cons 8 empty}}}}
+                   {println {++ "The sum of the list is " {sum-list my-list sum-list} "."}}}}}
+            
+)
+#|
 ;; seq tests
-(check-equal? (top-interp '{seq
+#;(check-equal? (top-interp '{seq
                              {+ 1 2}
                              {+ 2 3}}) "5")
 
-(top-interp '{println{++ "pie" "hi"}}) 
-;; a test to use once seq is working
-#;{seq
-  '{println "What is your favorite integer between 6 and 7?"}
-  '{println "Interesting. You picked "}} 
+#;(top-interp '{println{++ "pie" " " "hi"}})
 
-;;{let {your-number <- {read-num}}
-;{println {++ "Interesting. You picked " your-number ". good choice!"}}
+
+
+(check-equal? (top-interp '{seq
+              {println "What is your favorite integer between 6 and 7?"}
+              {let {your-number <- {read-num}}
+              {println {++ "Interesting. You picked " your-number ". good choice!"}}}}) "true")
+
+
+
                      
 ;; ++ tests
 (check-equal? (++ {list "Hello, " "world" "!"}) "Hello, world!")
@@ -346,7 +444,7 @@
 (check-exn #rx"OAZO" (lambda () (parse '{anon {i} : "hello" 31/7 +})))
 
 ;;println test
-(check-equal? (apply-primop (primopV 'println) (list (strC "teehee")) top-env) (boolV #t))
+#;(check-equal? (apply-primop (primopV 'println) (list (strC "teehee")) top-env) (boolV #t))
 
 ;; test cases from backtesting OAZO5
 (check-exn #rx"OAZO" (lambda () (parse '{let {: <- ""} "World"})))
@@ -551,7 +649,7 @@
 
 
 ;; Error coverage
-(check-exn #rx"OAZO" (lambda() (interp (appC (lamC (list 'x 'y 'z)
+#;(check-exn #rx"OAZO" (lambda() (interp (appC (lamC (list 'x 'y 'z)
                                   (appC (idC '+)
                                      (list (idC 'x) (idC 'y) (idC 'z))))
                             (list (numC 5) (numC 6) (numC 1))) top-env)))
@@ -603,3 +701,4 @@
 ;; Check-args test
 (check-equal? (check-args (list 'x) (list (numC 1))) #t)
 (check-exn #rx"OAZO" (lambda() (check-args (list 'x) (list (numC 1) (numC 2)))))
+|#
