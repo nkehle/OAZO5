@@ -329,18 +329,18 @@
 ;; fun and exciting program
 
 (top-interp '{let {welcome <- {anon {} : {println "Welcome to the Bird Program!"}}}
-                  {get-input <- {anon {} : {seq {println "Please enter a number:"}
+                  {get-input <- {anon {} : {seq {println "How high do you want the to bird fly?"}
                                                 {read-num}}}}
                   {print-bird <- {anon {spaces pb} : {if {equal? spaces 0} 
                                                          then {println " "} 
                                                          else {seq {println " "}
                                                               {pb {- spaces 1} pb}}}}}
                {seq {welcome}
-                    {get-input}
-                    {println ""}
-                    {println " ~O~          Woah the bird is flying"}
-
-                    {print-bird 5 print-bird}}})         
+                    {let {height <- {get-input}}
+                      {seq
+                       {println ""}
+                       {println " ~O~          Woah the bird is flying"}
+                       {print-bird height print-bird}}}}})         
 
 
 
