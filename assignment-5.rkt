@@ -129,7 +129,7 @@
                [(and(not(or(closeV? operand1)(closeV? operand2)))(not(or(primopV? operand1)(primopV? operand2))))
                 (boolV (equal? operand1 operand2))]
                [else (boolV #f)]))]    
-            [(primopV '++) (strV (++ (map serialize (map (lambda ([x : ExprC]) (interp x env)) args))))] 
+            [(primopV '++) (strV (++ a-v))] 
             [(primopV 'seq) (seq (first a-v) (rest a-v) env)])])])) 
 
  
@@ -283,10 +283,13 @@
 
 
 ;; takes a string a and a list of strings b and concatenates them in order
-(define (++ [a : (Listof String)]) : String
+(define (++ [a : (Listof Value)]) : String
   (match a
-    ['() ""] 
-    [(cons f r) (string-append f (++ r))])) 
+    ['()  ""] 
+    [(cons f r) (string-append
+                  (if (strV? f) (strV-str f) (serialize f))
+                  (++ r))]))
+
        
 ;; Checks if an item is any of the ExprC types
 (define (check-ExprC? [expr : Any]) : Boolean
