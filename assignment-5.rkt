@@ -43,6 +43,7 @@
         (binding 'read-num (primopV 'read-num))
         (binding '++ (primopV '++))
         (binding 'seq (primopV 'seq))
+        (binding 'sleep (primopV 'sleep))
         (binding 'error (primopV 'error)))) 
 
 
@@ -79,6 +80,7 @@
      
     [(lamC a body) (closeV a body env)]))
 
+;; Helper to interp the args for apply primop
 (define (interp-primop [args : (Listof ExprC)] [env : Env]) : (Listof Value)
  (let ([arg-values (map (λ ([arg : ExprC])
                               (interp arg env)) args)]) arg-values))
@@ -98,12 +100,12 @@
           [(primopV 'println) (displayln (serialize (first a-v))) (boolV #t)]
           [(primopV 'error) (error 'apply-primop "OAZO ERROR: user-error")]
           [(primopV '++) str]
+          [(primopV 'sleep) (if (numV? (first a-v)) (sleep (numV-n (first a-v))) (error 'sleep)) str]
           [else (error 'apply-primop "OAZO ERROR: Not enough args for primops")])]
       
        [else
         (define f : Value (first a-v))
         (define second : Value (first (rest a-v)))
-       
         (match primop 
           [(primopV '+)
            (if (and (numV? f) (numV? second)) (numV (+ (numV-n f) (numV-n second)))
@@ -129,10 +131,11 @@
                [(and(not(or(closeV? operand1)(closeV? operand2)))(not(or(primopV? operand1)(primopV? operand2))))
                 (boolV (equal? operand1 operand2))]
                [else (boolV #f)]))]    
-            [(primopV '++) (strV (++ a-v))] 
-            [(primopV 'seq) (seq (first a-v) (rest a-v) env)])])])) 
+          [(primopV '++) (strV (++ a-v))] 
+          [(primopV 'seq) (seq (first a-v) (rest a-v) env)]
+          )])])) 
 
- 
+
 ;; PARSE
 ;;-----------------------------------------------------------------------------------
 ;; Takes in a Sexp of concrete syntax and outputs the AST for the OAZO language
@@ -314,44 +317,45 @@
 
 
 (check-equal? (top-interp '{if true then "one" else "two"}) "\"one\"")
-
-
-
 (check-equal? (top-interp '{++ "abc"  "def"}) "\"abcdef\"")
 
 
+#;(top-interp '{sleep 1})
 
 ;; fun and exciting program
-#;(top-interp '{let {welcome <- {anon {} : {println "Welcome to the Bird Program!"}}}
+(top-interp '{let {welcome <- {anon {} : {println "Welcome to the Bird Program!"}}}
                   {prompt <- {anon {} : {println "How high do you want the to bird fly?"}}}
                   {get-input <- {anon {} : {read-num}}}
-                  
-               {print-bird <- {anon {spaces pb} : {if {equal? spaces 0} 
-                                                      then {println " "} 
+                  {print-bird <- {anon {spaces pb} : {if {equal? spaces 0} 
+                                                      then {println " "}
+                                                                 
                                                       else {seq {println " "}
+                                                                {sleep 0.7}
                                                                 {pb {- spaces 1} pb}}}}}
-               {let {count <- {anon {cnt body} :
+                  #;{func-times <- {anon {func-times func1 times cnt} : {if {<= times 0} then {cnt cnt func1} else {seq {func1 times}
+                                                                                               {func-times func-times func1 {- times 1} cnt}}}}}
+               
+                  {let {count <- {anon {cnt body} :
                                     {seq {prompt}
-                                         {let {height <- {get-input}} 
+                                         {let {height <- {get-input}}
                                            {body height}}
                                          {cnt cnt body}}}}   
 
                 
-                 {let {body <- {anon {height} :   
-                                     {seq
-                                      {println ""}
-                                      {if {<= height 0} then {error
-                                  {println " x-x           You've killed the bird"}}
-                                          else {if {<= 50 height}
-                                                   then {error
-                                  {println " x-x           the bird has flown into the sun :("}}
-                                                   else{if {<= height 10}
-                                                           then {println " ~o~           The bird flies!"}
-                                                           else
-                                 {println " ~~O~~          WOOOAH THE BIRD IS SOARING SOARING!!!"}}}}
-                                      {print-bird height print-bird}}}}
-                       
-                   {count count body}}}})
+                       {let {body <- {anon {height} :   
+                                        {seq
+                                         {println ""}
+                                         {if {<= height 0} then {error {println "      x-x           You've killed the bird"}}
+                                             else {if {<= 50 height}
+                                                      then {error
+                                                            {println "      x-x           the bird has flown into the sun :("}}
+                                                      else{if {<= height 10}
+                                                              then {println "      ~o~           The bird flies!"}
+                                                              else
+                                                              {println "      ~~O~~          WOOOAH THE BIRD IS SOARING SOARING!!!"}}}}
+                                         {print-bird height print-bird}}}}
+                         
+                         {count count body}}}})
 
 
 #;(top-interp '{let {welcome <- {anon {} : {println "Welcome to the Bird Program!"}}}
