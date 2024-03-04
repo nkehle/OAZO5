@@ -14,69 +14,100 @@
 (struct ifC     ([test : ExprC] [then : ExprC] [else : ExprC]) #:transparent)
 (struct strC    ([str : String])                               #:transparent)
 (struct lamC    ([args : (Listof Symbol)] [body : ExprC])      #:transparent)
-(struct arrC    ([args : (Listof ExprC)])                    #:transparent)
-(struct setarrC ([array : ExprC] [val : ExprC])              #:transparent)
+(struct arrC    ([args : (Listof ExprC)])                      #:transparent)
+(struct setarrC ([array : ExprC] [val : ExprC])                #:transparent)
 (define-type ExprC (U numC idC appC ifC strC lamC arrC setarrC))
-
-;; Bindings
-(struct binding ([name : Symbol] [val : Value])                #:transparent)
-(define-type Env (Listof binding))
-(define mt-env  '())
 
 ;; Values
 (struct numV    ([n : Real])                                   #:transparent)
 (struct boolV   ([b : Boolean])                                #:transparent)
 (struct strV    ([str : String])                               #:transparent)
-(struct numarrV ([nums : (Listof Real)])                                   #:transparent)
+(struct numarrV ([nums : (Listof Real)])                       #:transparent)
 (struct closeV  ([arg : (Listof Symbol)] [body : ExprC] [env : Env]) #:transparent)
 (struct primopV ([sym : Symbol])                               #:transparent)
 (struct nullV   ()                                             #:transparent)
-
 (define-type Value (U numV closeV boolV primopV strV numarrV nullV))
 
-;; Top Level Environment
+;; Bindings
+(struct env-binding   ([name : Symbol]  [val : Location])       #:transparent)
+(struct store-binding ([loc : Location] [val : Value])          #:transparent)
+(define-type Env (Listof env-binding))
+(define mt-env  '())
+
+;; Top Level Envirnment
 (define top-env
-  (list (binding 'true (boolV #t))
-        (binding 'false (boolV #f))
-        (binding '+ (primopV '+))
-        (binding '- (primopV '-))
-        (binding '* (primopV '*))
-        (binding '/ (primopV '/))
-        (binding '<= (primopV '<=))
-        (binding 'equal? (primopV 'equal?))
-        (binding 'num-eq? (primopV 'num-eq?))
-        (binding 'str-eq? (primopV 'str-eq?))
-        (binding 'error (primopV 'error))
-        (binding 'arr (primopV 'arr))
-        (binding 'aref (primopV 'aref))
-        (binding 'aset! (primopV 'aset!))
-        (binding 'alen (primopV 'alen))
-        (binding 'seq (primopV 'seq))
-        (binding 'substirng (primopV 'substring)))) 
+  (list (env-binding 'false 0)
+        (env-binding 'true 1)
+        (env-binding '+ 2)
+        (env-binding '- 3)
+        (env-binding '* 4)
+        (env-binding '/ 5)
+        (env-binding '<= 6)
+        (env-binding 'equal? 7)
+        (env-binding 'num-eq? 8)
+        (env-binding 'str-eq? 9)
+        (env-binding 'error 10)
+        (env-binding 'arr 11)
+        (env-binding 'aref 12)
+        (env-binding 'aset! 13)
+        (env-binding 'alen 14)
+        (env-binding 'seq 15)
+        (env-binding 'substirng 16)))
+
+;; Store
+(define-type Location Real)
+(struct Store ([bindings : (Listof store-binding)] [next : Real]))
+(define overide-store cons)
+
+(define top-sto
+  (Store
+   (list (store-binding 0 (boolV #f))
+         (store-binding 1 (boolV #t))
+         (store-binding 2 (primopV '+))
+         (store-binding 3 (primopV '-))
+         (store-binding 4 (primopV '*))
+         (store-binding 5 (primopV '/))
+         (store-binding 6 (primopV '<=))
+         (store-binding 7 (primopV 'equal?))
+         (store-binding 8 (primopV 'num-eq?))
+         (store-binding 9 (primopV 'str-eq?))
+         (store-binding 10 (primopV 'error))
+         (store-binding 11 (primopV 'arr))
+         (store-binding 12 (primopV 'aref))
+         (store-binding 13 (primopV 'aset!))
+         (store-binding 14 (primopV 'alen))
+         (store-binding 15 (primopV 'seq))
+         (store-binding 16 (primopV 'substring))) 17))
+
 
 
 ;; TOP-INTERP
 ;;-----------------------------------------------------------------------------------
 ;; Interprets the entirely parsed program
 (define (top-interp [s : Sexp]) : String
-  (serialize (interp (parse s) top-env)))
+  (serialize (interp (parse s) top-env top-sto)))
 
 
 ;; INTERP
 ;;-----------------------------------------------------------------------------------
 ;; Inteprets the given expression using list of funs to resolve appC's
-(define (interp [e : ExprC] [env : Env]) : Value
+(define (interp [e : ExprC] [env : Env] [sto : Store]) : Value
   (match e
-    [(numC n) (numV n)]          ;; numC 
-    [(idC s) (lookup s env)]     ;; idC
-    [(strC str) (strV str)]      ;; strC
-    [(ifC test then else)        ;; ifC
+    [(numC n) (numV n)]                      ;; numC 
+    [(idC s) (fetch (lookup s env) sto)]     ;; idC
+    [(appC f args) (define f-value : Value (interp f env sto))
+                   (match f-value
+                     [(? primopV?) (apply-primop f-value args env sto)] 
+                     [else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])] 
+    [other (error 'unimplemented)]
+    #;[(strC str) (strV str)]      ;; strC
+    #;[(ifC test then else)        ;; ifC
      (define test-result (interp test env)) 
      (cond [(boolV? test-result)
             (cond [(boolV-b test-result) (interp then env)]
                   [else (interp else env)])]
            [else (error 'interp "OAZO: Test was not a boolean expression: ~e" e)])] 
-    [(appC f args) (define f-value : Value (interp f env)) ;;Current env
+    #;[(appC f args) (define f-value : Value (interp f env)) ;;Current env
                    (match f-value
                      [(? closeV?) (check-args (closeV-arg f-value) args)
                                    (interp (closeV-body f-value)               ;;Current env
@@ -86,20 +117,20 @@
                      [(? primopV?) (apply-primop f-value args env)] 
                      [else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])] 
      
-    [(lamC a body) (closeV a body env)]))
+    #;[(lamC a body) (closeV a body env)]))
 
 ;; Helper to interp the args for apply primop
-(define (interp-primop [args : (Listof ExprC)] [env : Env]) : (Listof Value)
+(define (interp-primop [args : (Listof ExprC)] [env : Env] [sto : Store]) : (Listof Value)
  (let ([arg-values (map (λ ([arg : ExprC])
-                              (interp arg env)) args)]) arg-values))
+                              (interp arg env sto)) args)]) arg-values))
 
 
 ;; Takes a primop an list of args and the environment and ouputs the value 
-(define (apply-primop [primop : primopV] [args : (Listof ExprC)] [env : Env]) : Value
+(define (apply-primop [primop : primopV] [args : (Listof ExprC)] [env : Env] [sto : Store]) : Value
   (cond
     [(equal? args '()) (error 'apply "OAZO no args given ~v" args)]
     [else
-     (define a-v : (Listof Value) (interp-primop args env))
+     (define a-v : (Listof Value) (interp-primop args env sto))
      (define f : Value (first a-v))
      (define second : Value (first (rest a-v)))
      (match primop 
@@ -138,14 +169,18 @@
 
 
 ;; Returns the elemnt of the numarray at a given index
-(define (aref [array : numarrV] [index : Real]) : Real
+#;(define (aref [array : numarrV] [idx : Real]) : Real
   (cond
-    [(< index 0) (error 'aref "OAZO: Index out of bounds: ~a" index)]
-    [(>= index (length (numarrV-nums array))) (error 'aref "OAZO: Index out of bounds: ~a" index)]
-    [else (list-ref (numarrV-nums array) index)])) 
+    [(< idx 0) (error 'aref "OAZO: Index out of bounds: ~a" idx)]
+    [(>= idx (length (numarrV-nums array))) (error 'aref "OAZO: Index out of bounds: ~a" idx)]
+    #;[else (index idx (numarrV-nums array))])) 
+
+
 
 ;; Questions
 ;; What value does new-array make?
+;; Is the contents of an array a bunch of boxes? or is a list of real?
+
 
 ;; PARSE
 ;;-----------------------------------------------------------------------------------
@@ -209,13 +244,20 @@
 
 
 ;; Helper that looks up a value in an environment
-(define (lookup [for : Symbol] [env : Env]) : Value
+(define (lookup [for : Symbol] [env : Env]) : Location
     (match env
       ['() (error 'lookup "OAZO ERROR: name not found: ~e" for)]
-      [(cons (binding name val) r) (cond
-                                     [(symbol=? for name) val]
+      [(cons (env-binding name location) r) (cond
+                                     [(symbol=? for name) location]
                                      [else (lookup for r)])]))
 
+;; Helper that looks up a value in an environment
+(define (fetch [loc : Location] [store : Store]) : Value
+    (match store
+      ['() (error 'lookup "OAZO ERROR: location not found: ~e" loc)]
+      [(cons (store-binding location val) r) (cond
+                                     [(equal? location loc) val]
+                                     [else (fetch loc r)])]))
 
 ;; Helper function to check if all elements of a list are symbols
 (define (all-symbol-and-valid? [lst : (Listof Sexp)]) : Boolean
@@ -257,18 +299,18 @@
 
 
 ;; Returns an environment given two environments
-(define (extend-env [env1 : (Listof binding)] [env2 : (Listof binding)]) : Env
+(define (extend-env [env1 : (Listof env-binding)] [env2 : (Listof env-binding)]) : Env
   (append env1 env2)) 
 
 
 ;; Returns a list of bindings given a list of Symbols and list of values
-(define (bind [sym : (Listof Symbol)] [val : (Listof Value)]) : (Listof binding)
+(define (bind [sym : (Listof Symbol)] [val : (Listof Location)]) : (Listof env-binding)
   (match sym
     ['() '()]
     [(cons s rest-s)
      (match val
        ['() (error 'bind "OAZO Error: Mismatched number of arguments and symbols")]
-       [(cons v rest-v) (cons (binding s v) (bind rest-s rest-v))])]))
+       [(cons v rest-v) (cons (env-binding s v) (bind rest-s rest-v))])]))
 
 
 ;; Checks the body of the lamC and ensures that it is either a single argument
@@ -307,6 +349,7 @@
 
 ;; TEST CASES
 ;;-----------------------------------------------------------------------------------
+#|
 
 ;; test cases from backtesting OAZO5
 (check-exn #rx"OAZO" (lambda () (parse '{let {: <- ""} "World"})))
@@ -504,4 +547,4 @@
 ;; Check-args test
 (check-equal? (check-args (list 'x) (list (numC 1))) #t)
 (check-exn #rx"OAZO" (lambda() (check-args (list 'x) (list (numC 1) (numC 2)))))
-
+|#
