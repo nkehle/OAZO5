@@ -137,6 +137,12 @@
       (cons num (arr (- size 1) num))))
 
 
+;; Returns the elemnt of the numarray at a given index
+(define (aref [array : numarrV] [index : Real]) : Real
+  (cond
+    [(< index 0) (error 'aref "OAZO: Index out of bounds: ~a" index)]
+    [(>= index (length (numarrV-nums array))) (error 'aref "OAZO: Index out of bounds: ~a" index)]
+    [else (list-ref (numarrV-nums array) index)])) 
 
 ;; Questions
 ;; What value does new-array make?
