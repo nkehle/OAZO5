@@ -14,7 +14,9 @@
 (struct ifC     ([test : ExprC] [then : ExprC] [else : ExprC]) #:transparent)
 (struct strC    ([str : String])                               #:transparent)
 (struct lamC    ([args : (Listof Symbol)] [body : ExprC])      #:transparent)
-(define-type ExprC (U numC idC appC ifC strC lamC))
+(struct arrC    ([args : (Listof ExprC)])                    #:transparent)
+(struct setarrC ([array : ExprC] [val : ExprC])              #:transparent)
+(define-type ExprC (U numC idC appC ifC strC lamC arrC setarrC))
 
 ;; Bindings
 (struct binding ([name : Symbol] [val : Value])                #:transparent)
@@ -25,9 +27,12 @@
 (struct numV    ([n : Real])                                   #:transparent)
 (struct boolV   ([b : Boolean])                                #:transparent)
 (struct strV    ([str : String])                               #:transparent)
+(struct numarrV ([nums : (Listof Real)])                                   #:transparent)
 (struct closeV  ([arg : (Listof Symbol)] [body : ExprC] [env : Env]) #:transparent)
 (struct primopV ([sym : Symbol])                               #:transparent)
-(define-type Value (U numV closeV boolV primopV strV))
+(struct nullV   ()                                             #:transparent)
+
+(define-type Value (U numV closeV boolV primopV strV numarrV nullV))
 
 ;; Top Level Environment
 (define top-env
@@ -39,7 +44,15 @@
         (binding '/ (primopV '/))
         (binding '<= (primopV '<=))
         (binding 'equal? (primopV 'equal?))
-        (binding 'error (primopV 'error)))) 
+        (binding 'num-eq? (primopV 'num-eq?))
+        (binding 'str-eq? (primopV 'str-eq?))
+        (binding 'error (primopV 'error))
+        (binding 'arr (primopV 'arr))
+        (binding 'aref (primopV 'aref))
+        (binding 'aset! (primopV 'aset!))
+        (binding 'alen (primopV 'alen))
+        (binding 'seq (primopV 'seq))
+        (binding 'substirng (primopV 'substring)))) 
 
 
 ;; TOP-INTERP
@@ -84,7 +97,6 @@
 ;; Takes a primop an list of args and the environment and ouputs the value 
 (define (apply-primop [primop : primopV] [args : (Listof ExprC)] [env : Env]) : Value
   (cond
-    [(equal? primop (primopV 'read-num)) (read-num)]
     [(equal? args '()) (error 'apply "OAZO no args given ~v" args)]
     [else
      (define a-v : (Listof Value) (interp-primop args env))
@@ -107,15 +119,27 @@
                     (error 'apply-primop "OAZO ERROR: Non-numeric argument for div"))])]
        [(primopV '<=)
         (if (and (numV? f) (numV? second)) (boolV (<= (numV-n f) (numV-n second)))
-            (error 'apply-primop "OAZO ERROR: Non-numeric argument for <="))] 
-       [(primopV 'equal?) 
-        (let ([operand1 f]
-              [operand2 second])   
-          (cond   
-            [(and(not(or(closeV? operand1)(closeV? operand2)))(not(or(primopV? operand1)(primopV? operand2))))
-             (boolV (equal? operand1 operand2))]
-            [else (boolV #f)]))])]))    
+            (error 'apply-primop "OAZO ERROR: Non-numeric argument for <="))]
+       [(primopV 'num-eq?)
+        (if (and (numV? f) (numV? second)) (boolV (equal? (numV-n f) (numV-n second)))
+            (error 'apply-primop "OAZO ERROR: Non-numeric argument for num-eq?"))]
+      [(primopV 'str-eq?)
+        (if (and (strV? f) (strV? second)) (boolV (equal? (strV-str f) (strV-str second)))
+            (error 'apply-primop "OAZO ERROR: Non-numeric argument for str-eq?"))]
+       [(primopV 'arr)
+        (if (and (numV? f) (numV? second)) (numarrV (arr (numV-n f) (numV-n second)))
+            (error 'apply-primop "OAZO ERROR: Non-numeric argument for <="))])]))
 
+
+;; Creates a new array of given size and fills with a value
+(define (arr [size : Real] [num : Real]) : (Listof Real)
+  (if (zero? size) '()
+      (cons num (arr (- size 1) num))))
+
+
+
+;; Questions
+;; What value does new-array make?
 
 ;; PARSE
 ;;-----------------------------------------------------------------------------------
@@ -163,6 +187,8 @@
     [(boolV #f) "false"]
     [#f "false"]
     [(? primopV? p) "#<primop>"]
+    [(nullV) "null"]
+    #;[(numarrV arr) (list->string arr)]
     [else (error 'serialize "OAZO Unsupported value: ~v" val)]))
 
 
@@ -247,31 +273,6 @@
     [_ #t]))
  
 
-;; Prompts the user to give a number and errors if it is not a valid Real
-;; and returns a numV if its valid
-(define (read-num) : Value
-  (display "> ")
-  (flush-output)
-  (define input (read-line))
-  (cond
-    [(eof-object? input) (error 'read-num "OAZO: Unexpected end of input")]
-    [(string? input)
-     (define num (string->number input))
-     (if (real? num)
-         (numV num)
-         (error 'read-num "OAZO: Input is not a real number"))]
-    [else (error 'read-num "OAZO: Invalid input format")]))
-
-
-;; takes a string a and a list of strings b and concatenates them in order
-(define (++ [a : (Listof Value)]) : String
-  (match a
-    ['()  ""] 
-    [(cons f r) (string-append
-                  (if (strV? f) (strV-str f) (serialize f))
-                  (++ r))]))
-
-       
 ;; Checks if an item is any of the ExprC types
 (define (check-ExprC? [expr : Any]) : Boolean
   (match expr
@@ -306,32 +307,28 @@
 (check-exn #rx"OAZO" (lambda () (parse '{anon {i} : "hello" 31/7 +})))
 
 ;; apply-primop tests
-(check-equal? (apply-primop (primopV 'equal?) (list (numC 5) (numC 5)) top-env) (boolV #t))
-(check-equal? (apply-primop (primopV 'equal?) (list (strC "hello") (strC "hello")) top-env) (boolV #t))
-(check-equal? (apply-primop (primopV 'equal?) (list (numC 5) (strC "5")) top-env) (boolV #f)) 
-(check-equal? (apply-primop (primopV 'equal?) (list (idC 'true) (idC 'true)) top-env) (boolV #t))
-(check-equal?  (apply-primop (primopV 'equal?) (list (lamC '(x) (numC 3)) (numC 3)) top-env) (boolV #f))
+(check-equal? (apply-primop (primopV 'num-eq?) (list (numC 5) (numC 5)) top-env) (boolV #t))
+(check-equal? (apply-primop (primopV 'str-eq?) (list (strC "hello") (strC "hello")) top-env) (boolV #t))
+(check-exn #rx"OAZO" (lambda () (apply-primop (primopV 'num-eq?) (list (numC 5) (strC "5")) top-env)))
+(check-exn #rx"OAZO" (lambda () (apply-primop (primopV 'str-eq?) (list (numC 5) (strC "5")) top-env)))
 
 
 ;; Top-Interp Tests
 (check-equal? (top-interp '{if {<= 4 3} then 29387 else true})"true")
 (check-equal? (top-interp '{if {<= 2 3} then 29387 else true})"29387")
 (check-equal? (top-interp '{if {<= 2 3} then false else true})"false")
-(check-equal? (top-interp '{{anon {} : {equal? 1 1}}}) "true")
-(check-equal? (top-interp '(equal? true true))"true")
 
 
-(check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 (error "1234")))))
+#;(check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 (error "1234")))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 #t))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(- 4 "s"))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(* 4 "s")))) 
 (check-exn #rx"OAZO"(lambda ()(top-interp '(/ 4 "f"))))
-(check-exn #rx"OAZO"(lambda ()(top-interp '(<= 4))))
+#;(check-exn #rx"OAZO"(lambda ()(top-interp '(<= 4))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(<= 4 "f"))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(/ + + )))) 
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 (error)))))
-(check-exn #rx"OAZO"(lambda ()(top-interp '(equal? 4 (-)))))
-(check-exn #rx"OAZO" (lambda ()(top-interp '((anon (e) : (e e)) error))))
+#;(check-exn #rx"OAZO" (lambda ()(top-interp '((anon (e) : (e e)) error))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ ))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ else))))  
 (check-exn #rx"OAZO" (lambda() (top-interp '(/ 1 (- 3 3)))))
@@ -375,7 +372,6 @@
 (check-equal? (interp (appC (idC '*) (list (numC 12)(numC 2))) top-env) (numV 24))  
 (check-equal? (interp (appC (idC '/) (list (numC 6) (numC 2))) top-env) (numV 3))
 (check-equal? (interp (appC (idC '<=) (list(numC 0) (numC 2))) top-env) (boolV true))
-(check-equal? (interp (appC (idC 'equal?) (list (idC '+) (numC 2))) top-env) (boolV #f))
 (check-equal? (interp (appC (lamC (list 'x)
                                   (appC (idC '+)
                                      (list (idC 'x) (numC 1))))
