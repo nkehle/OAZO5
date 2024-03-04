@@ -39,11 +39,6 @@
         (binding '/ (primopV '/))
         (binding '<= (primopV '<=))
         (binding 'equal? (primopV 'equal?))
-        (binding 'println (primopV 'println))
-        (binding 'read-num (primopV 'read-num))
-        (binding '++ (primopV '++))
-        (binding 'seq (primopV 'seq))
-        (binding 'sleep (primopV 'sleep))
         (binding 'error (primopV 'error)))) 
 
 
@@ -93,45 +88,33 @@
     [(equal? args '()) (error 'apply "OAZO no args given ~v" args)]
     [else
      (define a-v : (Listof Value) (interp-primop args env))
-     (match a-v
-       [(list str)
-        (match primop 
-          [(primopV 'println) (displayln (serialize (first a-v))) (boolV #t)]
-          [(primopV 'error) (error 'apply-primop "OAZO ERROR: user-error")]
-          [(primopV '++) str]
-          [(primopV 'sleep) (if (numV? (first a-v)) (sleep (numV-n (first a-v))) (error 'sleep)) str]
-          [else (error 'apply-primop "OAZO ERROR: Not enough args for primops")])]
-      
-       [else
-        (define f : Value (first a-v))
-        (define second : Value (first (rest a-v)))
-        (match primop 
-          [(primopV '+)
-           (if (and (numV? f) (numV? second)) (numV (+ (numV-n f) (numV-n second)))
-               (error 'apply-primop "OAZO ERROR: Non-numeric argument for add"))]
-          [(primopV '-)
-           (if (and (numV? f) (numV? second)) (numV (- (numV-n f) (numV-n second)))
-               (error 'apply-primop "OAZO ERROR: Non-numeric argument for sub"))]
-          [(primopV '*)
-           (if (and (numV? f) (numV? second)) (numV (* (numV-n f) (numV-n second)))
-               (error 'apply-primop "OAZO ERROR: Non-numeric argument for mult"))]
-          [(primopV '/) 
-           (cond
-             [(equal? (numV 0) second) (error 'apply-primop "OAZO ERROR: Divide by zero!")]
-             [else (if (and (numV? f) (numV? second)) (numV (/ (numV-n f) (numV-n second)))
-                       (error 'apply-primop "OAZO ERROR: Non-numeric argument for div"))])]
-          [(primopV '<=)
-           (if (and (numV? f) (numV? second)) (boolV (<= (numV-n f) (numV-n second)))
-               (error 'apply-primop "OAZO ERROR: Non-numeric argument for <="))] 
-          [(primopV 'equal?) 
-           (let ([operand1 f]
-                 [operand2 second])   
-             (cond   
-               [(and(not(or(closeV? operand1)(closeV? operand2)))(not(or(primopV? operand1)(primopV? operand2))))
-                (boolV (equal? operand1 operand2))]
-               [else (boolV #f)]))]    
-          [(primopV '++) (strV (++ a-v))] 
-          [(primopV 'seq) (seq (first a-v) (rest a-v) env)])])])) 
+     (define f : Value (first a-v))
+     (define second : Value (first (rest a-v)))
+     (match primop 
+       [(primopV '+)
+        (if (and (numV? f) (numV? second)) (numV (+ (numV-n f) (numV-n second)))
+            (error 'apply-primop "OAZO ERROR: Non-numeric argument for add"))]
+       [(primopV '-)
+        (if (and (numV? f) (numV? second)) (numV (- (numV-n f) (numV-n second)))
+            (error 'apply-primop "OAZO ERROR: Non-numeric argument for sub"))]
+       [(primopV '*)
+        (if (and (numV? f) (numV? second)) (numV (* (numV-n f) (numV-n second)))
+            (error 'apply-primop "OAZO ERROR: Non-numeric argument for mult"))]
+       [(primopV '/) 
+        (cond
+          [(equal? (numV 0) second) (error 'apply-primop "OAZO ERROR: Divide by zero!")]
+          [else (if (and (numV? f) (numV? second)) (numV (/ (numV-n f) (numV-n second)))
+                    (error 'apply-primop "OAZO ERROR: Non-numeric argument for div"))])]
+       [(primopV '<=)
+        (if (and (numV? f) (numV? second)) (boolV (<= (numV-n f) (numV-n second)))
+            (error 'apply-primop "OAZO ERROR: Non-numeric argument for <="))] 
+       [(primopV 'equal?) 
+        (let ([operand1 f]
+              [operand2 second])   
+          (cond   
+            [(and(not(or(closeV? operand1)(closeV? operand2)))(not(or(primopV? operand1)(primopV? operand2))))
+             (boolV (equal? operand1 operand2))]
+            [else (boolV #f)]))])]))    
 
 
 ;; PARSE
@@ -306,87 +289,11 @@
       (seq (first b) (rest b) env)))
 
 
-
-;; SUPER FUN AND EXCITING BIRD SIMULATOR GAME
-;;-----------------------------------------------------------------------------------
-#;(top-interp '{let {welcome <- {anon {} : {println "Welcome to the Bird Program!"}}}
-                  {prompt <- {anon {} : {println "How high do you want the to bird fly?"}}}
-                  {get-input <- {anon {} : {read-num}}}
-                  {print-bird <- {anon {spaces pb} : {if {equal? spaces 0} 
-                                                      then {println " "}
-                                                                 
-                                                      else {seq {println " "}
-                                                                {sleep 0.7}
-                                                                {pb {- spaces 1} pb}}}}}
-              
-                  {let {count <- {anon {cnt body} :
-                                    {seq {prompt}
-                                         {let {height <- {get-input}}
-                                           {body height}}
-                                         {cnt cnt body}}}}   
-
-                
-                       {let {body <- {anon {height} :   
-                                        {seq
-                                         {println ""}
-                                         {if {<= height 0} then
-                                           {println "      x-x           You've killed the bird"}
-                                             else {if {<= 50 height}
-                                                      then {error
-                                           {println "      x-x           the bird has flown into the sun :("}}
-                                                      else{if {<= height 10}
-                                                       then {println "      ~o~           The bird flies!"}
-                                                              else
-                                 {println "      ~~~O~~~          WOOOAH THE BIRD IS SOARING!!!"}}}}
-                                         {print-bird height print-bird}}}}
-                         
-                         {count count body}}}})
-
-
-#| Example output of fun program **There is an animation when run that invovles sleep
-  to represent that the bird is flying, this is not diplsayed properly below**
+;; OAZO7 TEST CASES
 ;;-----------------------------------------------------------------------------------
 
-"How high do you want the to bird fly?"
-> 1
-""
-"      ~o~           The bird flies!"
-" "
-" "
-"How high do you want the to bird fly?"
-> 5
-""
-"      ~o~           The bird flies!"
-" "
-" "
-" "
-" "
-" "
-" "
-"How high do you want the to bird fly?"
-> 15
-""
-"      ~~~O~~~          WOOOAH THE BIRD IS SOARING!!!"
-" "
-" "
-" "
-" "
-" "
-" "
-" "
-" "
-" "
-" "
-" "
-" "
-" "
-" "
-" "
-" "
-"How high do you want the to bird fly?"
-> 100
-""
-"      x-x           the bird has flown into the sun :("|#
+
+
 
 
 
@@ -398,41 +305,20 @@
 (check-exn #rx"OAZO" (lambda () (parse '{let {: <- ""} "World"})))
 (check-exn #rx"OAZO" (lambda () (parse '{anon {i} : "hello" 31/7 +})))
 
-
-;; println test
-#;(check-equal? (apply-primop (primopV 'println) (list (strC "teehee")) top-env) (boolV #t))
-
-;; ++ tests
-(check-equal? (top-interp '{if true then "one" else "two"}) "\"one\"")
-(check-equal? (top-interp '{++ "abc"  "def"}) "\"abcdef\"")
-(check-equal? (top-interp '{++ "1" " " ""2}) "\"1 2\"")
-
-;; seq tests
-#;(check-equal? (top-interp '{seq
-                             {+ 1 2}
-                             {+ 2 3}}) "5")
-
-#;(top-interp '{println{++ "pie" " " "hi"}})
-
-#;(check-equal? (top-interp '{seq
-              {println "What is your favorite integer between 6 and 7?"}
-              {let {your-number <- {read-num}}
-              {println {++ "Interesting. You picked " your-number ". good choice!"}}}}) "true")
-
+;; apply-primop tests
 (check-equal? (apply-primop (primopV 'equal?) (list (numC 5) (numC 5)) top-env) (boolV #t))
 (check-equal? (apply-primop (primopV 'equal?) (list (strC "hello") (strC "hello")) top-env) (boolV #t))
 (check-equal? (apply-primop (primopV 'equal?) (list (numC 5) (strC "5")) top-env) (boolV #f)) 
 (check-equal? (apply-primop (primopV 'equal?) (list (idC 'true) (idC 'true)) top-env) (boolV #t))
-#;(check-equal? (apply-primop (primopV '+) (list (closeV 1 2 top-env)) top-env ()))
 (check-equal?  (apply-primop (primopV 'equal?) (list (lamC '(x) (numC 3)) (numC 3)) top-env) (boolV #f))
 
-(check-exn #rx"OAZO" (lambda() (parse '{let {c <- 5}})))
 
 ;; Top-Interp Tests
 (check-equal? (top-interp '{if {<= 4 3} then 29387 else true})"true")
 (check-equal? (top-interp '{if {<= 2 3} then 29387 else true})"29387")
 (check-equal? (top-interp '{if {<= 2 3} then false else true})"false")
 (check-equal? (top-interp '{{anon {} : {equal? 1 1}}}) "true")
+(check-equal? (top-interp '(equal? true true))"true")
 
 
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 (error "1234")))))
@@ -443,66 +329,43 @@
 (check-exn #rx"OAZO"(lambda ()(top-interp '(<= 4))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(<= 4 "f"))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(/ + + )))) 
-(check-equal?(top-interp '(equal? true true))"true")
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 (error)))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(equal? 4 (-)))))
 (check-exn #rx"OAZO" (lambda ()(top-interp '((anon (e) : (e e)) error))))
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ ))))
-;;(top-interp '(/ + + )) 
 (check-exn #rx"OAZO"(lambda ()(top-interp '(+ else))))  
-;;(interp(parse '(+ 4 (error "1234"))) top-env)
-
 (check-exn #rx"OAZO" (lambda() (top-interp '(/ 1 (- 3 3)))))
-
 (check-exn #rx"OAZO" (lambda() (top-interp '(3 4 5)))) 
-
 
  
 (check-equal? (top-interp '{{anon {seven} : {seven}}
                {{anon {minus} :
                     {anon {} : {minus {+ 3 10} {* 2 3} }}}
                {anon {x y} : {+ x {* -1 y}}}}}) "7")
-
 (check-equal? (top-interp '{let {x <- 5}
                                 {y <- 7}
                                 {+ x y}}) "12")
-
 (check-equal? (top-interp '{let {z <- {+ 7 8}}
                                 {y <- 5}
                                 {+ z y}}) "20")
-
 (check-equal? (top-interp '{{anon {x y} : {+ x y}} 5 7}) "12")
-
 (check-equal? (top-interp '{{anon {x y z} :
                                  {+ x {+ y z}}} 1 2 3}) "6")
-
 (check-equal? (top-interp '{let {f <- {anon {a} : {+ a 4}}}
                                 {f 1}}) "5")
-
-
 (check-exn #rx"OAZO" (lambda() (top-interp
                                   '{{func {ignoreit x}: {+ 3 4}}
                                     {func {main} : {ignoreit {/ 1 {+ 0 0}}}}})))
-
 (check-exn #rx"OAZO" (lambda() (top-interp '{{anon {x x} : 3} 1 1})))
 
 
 ;; Recurisve Test
 (check-equal? (top-interp '{let {f <- {anon {func x} : {if {<= x 10} then {func func {+ x 1}} else {-1}}}}
                                 {f f 1}}) "-1")
-
-
-#;(check-exn #rx"OAZO" (lambda () (top-interp '{let {f <- {anon {a} : {g 1}}}
-                                {g <- {anon {b} : {+ a b}}}
-                                {g 5}}) "6"))
-
-
 (check-exn #rx"OAZO" (lambda () (top-interp
                                  '{let {f <- {anon {x} : {+ x 1}}}
                                        {y <- {anon {z} : {f 4}}}
                                        {y 3}})))
-
-
 (check-exn #rx"OAZO" (lambda () (top-interp
                                  '{{anon {} : 12} 1})))
 
@@ -513,27 +376,21 @@
 (check-equal? (interp (appC (idC '/) (list (numC 6) (numC 2))) top-env) (numV 3))
 (check-equal? (interp (appC (idC '<=) (list(numC 0) (numC 2))) top-env) (boolV true))
 (check-equal? (interp (appC (idC 'equal?) (list (idC '+) (numC 2))) top-env) (boolV #f))
-
 (check-equal? (interp (appC (lamC (list 'x)
                                   (appC (idC '+)
                                      (list (idC 'x) (numC 1))))
                             (list (numC 5))) top-env) (numV 6))
-
 (check-equal? (interp (ifC (idC 'true) (numC 1) (numC 2)) top-env) (numV 1))
-
-
 
 ;; Parse Tests
 (check-equal? (parse '{12}) (numC 12))
 (check-equal? (parse 'x) (idC 'x))
 (check-equal? (parse "string") (strC "string"))
 (check-equal? (parse '{+ 1 2}) (appC (idC '+) (list (numC 1) (numC 2))))
-(check-equal? (parse '{anon {x y} : {+ x y}})
-              
+(check-equal? (parse '{anon {x y} : {+ x y}})         
               (lamC (list 'x 'y)
                     (appC (idC '+)
                           (list (idC 'x) (idC 'y)))))
-
 (check-equal? (parse '{let {x <- 5}
                            {y <- 7}
                         {+ x y}})
@@ -543,14 +400,9 @@
                                 (list (idC 'x) (idC 'y))))
               (list (numC 5)
                     (numC 7))))
-
-
 (check-equal? (parse '{if {<= x 1} then 1 else -1})
-              
               (ifC (appC (idC '<=) (list (idC 'x) (numC 1))) (numC 1) (numC -1)))
-
 (check-exn #rx"OAZO" (lambda () (parse '(let (z <- (anon () : 3)) (z <- 9) (z))))) 
-
 (check-equal? (parse '{{anon {x y} : {+ x y}} 5 7})
               
               (appC (lamC (list 'x 'y)
@@ -558,10 +410,9 @@
                                 (list (idC 'x) (idC 'y))))
               (list (numC 5)
                     (numC 7))))
-
 (check-equal? (parse '{f 4}) (appC (idC 'f) (list(numC 4))))
 (check-exn #rx"OAZO" (lambda() (parse '{{anon {2} : {1}} 1})))
-
+(check-exn #rx"OAZO" (lambda() (parse '{let {c <- 5}})))
 (check-exn #rx"OAZO" (lambda () (parse '(+ then 4))))
 
 
@@ -610,13 +461,9 @@
                     (binding 't (boolV #f)) (binding 'b (numV 2)) (binding 'dd (primopV '+))))
 
 ;; Error coverage
-#;(check-exn #rx"OAZO" (lambda() (interp (appC (lamC (list 'x 'y 'z)
-                                  (appC (idC '+)
-                                     (list (idC 'x) (idC 'y) (idC 'z))))
-                            (list (numC 5) (numC 6) (numC 1))) top-env)))
+
 
 (check-exn #rx"OAZO" (lambda()(interp (ifC (numC 5) (numC 1) (numC 2)) top-env)))
-
 (check-exn #rx"OAZO" (lambda()(interp (appC (idC '+) (list (strC "oops") (numC 1))) top-env)))
 
 
@@ -626,13 +473,10 @@
 (check-equal? (serialize #t) "true")
 (check-equal? (serialize #f) "false")
 (check-equal? (serialize (strV "Hello")) "\"Hello\"")
-;;(check-equal? (serialize (interp (numC 1) top-env)) "#<procedure>")
 (check-equal? (serialize (primopV '+)) "#<primop>")  
-
 (check-equal? (serialize (closeV (list 'x 'y) (appC (idC '+) (list (numC 1)
                   (numC 1))) (list (binding 'x (numV 4)) (binding 'y (numV 2))))) "#<procedure>")
 (check-exn #rx"OAZO" (lambda()(serialize "string")))
-
 
 ;;helper
 (check-equal? (bind (list 'x 'y 'z) (list (numV 1) (numV 2) (numV 3)))
@@ -659,27 +503,3 @@
 (check-equal? (check-args (list 'x) (list (numC 1))) #t)
 (check-exn #rx"OAZO" (lambda() (check-args (list 'x) (list (numC 1) (numC 2)))))
 
-
-;; OAZO6 Tests
-#;(top-interp '{let {empty <- 15}
-               {let {empty? <- {anon (x) : {equal? x empty}}}
-                 {cons <- {anon {f r} :
-                                {anon {key} :
-                                      {if {equal? key 0}
-                                          then
-                                          f
-                                          else
-                                          r}}}}
-                 {first <- {anon {pair} :
-                                 {pair 0}}}
-                 {rest <- {anon {pair} :
-                                {pair 1}}}
-                 {let {sum-list <- {anon (l self) :
-                                         {if {empty? l}
-                                             then
-                                             0
-                                             else
-                                             {+ {first l}
-                                                {self {rest l} self}}}}}
-                   {my-list <- {cons 3 {cons 24 {cons 8 empty}}}}
-                   {println {++ "The sum of the list is " {sum-list my-list sum-list} "."}}}}})
