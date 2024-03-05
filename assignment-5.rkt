@@ -23,7 +23,7 @@
 (struct boolV   ([b : Boolean])                                #:transparent)
 (struct strV    ([str : String])                               #:transparent)
 (struct numarrV ([nums : (Listof Real)])                       #:transparent)
-(struct closeV  ([arg : (Listof Symbol)] [body : ExprC] [env : Env]) #:transparent)
+(struct closeV  ([args : (Listof Symbol)] [body : ExprC] [env : Env]) #:transparent)
 (struct primopV ([sym : Symbol])                               #:transparent)
 (struct nullV   ()                                             #:transparent)
 (define-type Value (U numV closeV boolV primopV strV numarrV nullV))
@@ -38,8 +38,9 @@
 (define-type Location Real)
 (struct Store ([bindings : (Listof store-binding)] [next : Real])       #:transparent)
 (struct v*s   ([val : Value] [sto : Store])                             #:transparent)
-(struct lv*s  ([lst : (Listof Value)] [sto : Store]))
-(define overide-store cons)
+(struct lv*s  ([lst : (Listof Value)] [sto : Store])                    #:transparent)
+(struct e*s   ([env : Env] [sto : Store])                               #:transparent)
+(define add-store cons)
 
 
 ;; Top Level Envirnment
@@ -97,16 +98,47 @@
 ;; Inteprets the given expression using list of funs to resolve appC's
 (define (interp [e : ExprC] [env : Env] [sto : Store]) : v*s
   (match e
-    [(numC n) (v*s (numV n) sto)]                                       ;; numC 
-    [(idC s) (v*s (fetch (lookup s env) (Store-bindings sto)) sto)]     ;; idC
-    [(appC f a)
+    [(numC n)   (v*s (numV n) sto)]
+    [(strC str) (v*s (strV str) sto)]
+    [(idC s)    (v*s (fetch (lookup s env) (Store-bindings sto)) sto)] 
+    [(appC f a) 
      (define func    (interp f env sto))
      (define args    (interp-args a env (v*s-sto func)))
      (define new-sto (lv*s-sto args))
      (match (v*s-val func)
-       [(? primopV?) (apply-primop (v*s-val func) (lv*s-lst args) env new-sto)] 
-       [else (error 'interp "OAZO Unsupported value for interp: ~v" func)])] 
-    [other (error 'unimplemented)]))
+       [(? primopV?) (apply-primop (v*s-val func) (lv*s-lst args) env new-sto)]
+       
+       [(? closeV? clos)  (check-args (closeV-args clos) (lv*s-lst args))
+                                           (define new-es (extend-both
+                                                           (closeV-env clos) (closeV-args clos)
+                                                           (lv*s-lst args) new-sto))
+                                           (interp (closeV-body clos) (e*s-env new-es) (e*s-sto new-es))]
+       
+       [else (error 'interp "OAZO Unsupported value for interp: ~v" func)])]
+    [(lamC a body) (v*s (closeV a body env) sto)]
+    [other (error 'unimplemented "~e" other)]))
+
+
+;; Helper that extends a current environemt/store and returns the updated e*s
+(define (extend-both [env : Env] [params : (Listof Symbol)] [args : (Listof Value)] [sto : Store]) : e*s
+  (cond
+    [(empty? params) (e*s env sto)]
+    [else (define cell (lookup (first params) env))
+          (if (> cell -1) 
+              (extend-both env (rest params) (rest args) (Store (cons (store-binding cell (first args))
+                                                                      (Store-bindings sto))
+                                                                (+ 1 (Store-next sto))))
+
+              (extend-both (cons (env-binding (first params)  (Store-next sto)) env)
+                           (rest params) (rest args) (Store (cons (store-binding
+                                                            (Store-next sto) (first args)) (Store-bindings sto))
+                                                            (+ 1 (Store-next sto)))))]))
+
+
+;; Helper to check the number of param vs given arguments
+(define (check-args [param : (Listof Symbol)] [args : (Listof Value)]) : Boolean
+  (if (>= (length param) (length args)) #t
+      (error 'check-args "OAZO mismatch number of arguments")))
 
 
 ;; Helper to interpret the args and thread the store through 
@@ -118,9 +150,7 @@
     (lv*s (cons (v*s-val res) (lv*s-lst tail)) (lv*s-sto tail))]))
 
 
-
     
-    #;[(strC str) (strV str)]      ;; strC
     #;[(ifC test then else)        ;; ifC
      (define test-result (interp test env)) 
      (cond [(boolV? test-result)
@@ -129,20 +159,10 @@
            [else (error 'interp "OAZO: Test was not a boolean expression: ~e" e)])] 
     #;[(appC f args) (define f-value : Value (interp f env)) ;;Current env
                    (match f-value
-                     [(? closeV?) (check-args (closeV-arg f-value) args)
-                                   (interp (closeV-body f-value)               ;;Current env
-                                          (extend-env (bind (closeV-arg f-value)
-                                                            (map(lambda ([a : ExprC]) (interp a env)) args))
-                                                      (closeV-env f-value)))]
+                    
                      [(? primopV?) (apply-primop f-value args env)] 
                      [else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])] 
      
-    #;[(lamC a body) (closeV a body env)]
-
-;; Helper to interp the args for apply primop
-#;(define (interp-primop [args : (Listof ExprC)] [env : Env] [sto : Store]) : (Listof Value)
- (let ([arg-values (map (λ ([arg : ExprC])
-                              (result-val (interp arg env sto))) args)]) arg-values))
 
 
 ;; Takes a primop an list of args and the environment and ouputs the value 
@@ -194,12 +214,6 @@
     [(< idx 0) (error 'aref "OAZO: Index out of bounds: ~a" idx)]
     [(>= idx (length (numarrV-nums array))) (error 'aref "OAZO: Index out of bounds: ~a" idx)]
     #;[else (index idx (numarrV-nums array))])) 
-
-
-
-;; Questions
-;; What value does new-array make?
-;; Is the contents of an array a bunch of boxes? or is a list of real?
 
 
 ;; PARSE
@@ -257,19 +271,13 @@
 ;; HELPER FUNCTIONS
 ;;-----------------------------------------------------------------------------------
 
-;; Helper to check the number of param vs given arguments
-(define (check-args [param : (Listof Symbol)] [args : (Listof ExprC)]) : Boolean
-  (if (>= (length param) (length args)) #t
-      (error 'check-args "OAZO mismatch number of arguments")))
-
-
 ;; Helper that looks up a value in an environment
 (define (lookup [for : Symbol] [env : Env]) : Location
     (match env
-      ['() (error 'lookup "OAZO ERROR: name not found: ~e" for)]
+      ['() -1 #;(error 'lookup "OAZO ERROR: name not found: ~e" for)]
       [(cons (env-binding name location) r) (cond
-                                     [(symbol=? for name) location]
-                                     [else (lookup for r)])]))
+                                              [(symbol=? for name) location]
+                                              [else (lookup for r)])]))
 
 ;; Helper that looks up a value in an environment
 (define (fetch [loc : Location] [store : (Listof store-binding)]) : Value
@@ -362,6 +370,18 @@
 ;;-----------------------------------------------------------------------------------
 
 (check-equal? (top-interp '{+ 1 2}) "3")
+(check-equal? (top-interp '{let {f <- {anon {a} : {+ a 4}}}
+                                {f 1}}) "5")
+
+
+;; Interp tests
+(check-equal? (v*s-val (interp (appC (idC '+) (list (numC 1) (numC 1))) top-env top-sto)) (numV 2)) 
+(check-equal? (v*s-val (interp (appC (idC '-) (list (numC 3) (numC 1))) top-env top-sto)) (numV 2))
+(check-equal? (v*s-val (interp (appC (idC '*) (list (numC 12)(numC 2))) top-env top-sto)) (numV 24))  
+(check-equal? (v*s-val (interp (appC (idC '/) (list (numC 6) (numC 2))) top-env top-sto)) (numV 3))
+(check-equal? (v*s-val (interp (appC (idC '<=) (list(numC 0) (numC 2))) top-env top-sto)) (boolV true))
+(check-equal? (v*s-val (interp (appC (idC 'num-eq?) (list (numC 21) (numC 21))) top-env top-sto)) (boolV true))
+(check-equal? (v*s-val (interp (appC (idC 'str-eq?) (list (strC "hi") (strC "hi"))) top-env top-sto)) (boolV true))
 
 
 
@@ -435,17 +455,6 @@
 (check-exn #rx"OAZO" (lambda () (top-interp
                                  '{{anon {} : 12} 1})))
 
-;; Interp tests
-(check-equal? (interp (appC (idC '+) (list (numC 1) (numC 1))) top-env) (numV 2)) 
-(check-equal? (interp (appC (idC '-) (list (numC 3) (numC 1))) top-env) (numV 2))
-(check-equal? (interp (appC (idC '*) (list (numC 12)(numC 2))) top-env) (numV 24))  
-(check-equal? (interp (appC (idC '/) (list (numC 6) (numC 2))) top-env) (numV 3))
-(check-equal? (interp (appC (idC '<=) (list(numC 0) (numC 2))) top-env) (boolV true))
-(check-equal? (interp (appC (lamC (list 'x)
-                                  (appC (idC '+)
-                                     (list (idC 'x) (numC 1))))
-                            (list (numC 5))) top-env) (numV 6))
-(check-equal? (interp (ifC (idC 'true) (numC 1) (numC 2)) top-env) (numV 1))
 
 ;; Parse Tests
 (check-equal? (parse '{12}) (numC 12))
