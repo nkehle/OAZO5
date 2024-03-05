@@ -34,6 +34,14 @@
 (define-type Env (Listof env-binding))
 (define mt-env  '())
 
+;; Store
+(define-type Location Real)
+(struct Store ([bindings : (Listof store-binding)] [next : Real])       #:transparent)
+(struct v*s   ([val : Value] [sto : Store])                             #:transparent)
+(struct lv*s  ([lst : (Listof Value)] [sto : Store]))
+(define overide-store cons)
+
+
 ;; Top Level Envirnment
 (define top-env
   (list (env-binding 'false 0)
@@ -54,11 +62,7 @@
         (env-binding 'seq 15)
         (env-binding 'substirng 16)))
 
-;; Store
-(define-type Location Real)
-(struct Store ([bindings : (Listof store-binding)] [next : Real]))
-(define overide-store cons)
-
+;; Top Level Store
 (define top-sto
   (Store
    (list (store-binding 0 (boolV #f))
@@ -85,21 +89,37 @@
 ;;-----------------------------------------------------------------------------------
 ;; Interprets the entirely parsed program
 (define (top-interp [s : Sexp]) : String
-  (serialize (interp (parse s) top-env top-sto)))
+  (serialize (v*s-val (interp (parse s) top-env top-sto))))
 
 
 ;; INTERP
 ;;-----------------------------------------------------------------------------------
 ;; Inteprets the given expression using list of funs to resolve appC's
-(define (interp [e : ExprC] [env : Env] [sto : Store]) : Value
+(define (interp [e : ExprC] [env : Env] [sto : Store]) : v*s
   (match e
-    [(numC n) (numV n)]                      ;; numC 
-    [(idC s) (fetch (lookup s env) sto)]     ;; idC
-    [(appC f args) (define f-value : Value (interp f env sto))
-                   (match f-value
-                     [(? primopV?) (apply-primop f-value args env sto)] 
-                     [else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])] 
-    [other (error 'unimplemented)]
+    [(numC n) (v*s (numV n) sto)]                                       ;; numC 
+    [(idC s) (v*s (fetch (lookup s env) (Store-bindings sto)) sto)]     ;; idC
+    [(appC f a)
+     (define func    (interp f env sto))
+     (define args    (interp-args a env (v*s-sto func)))
+     (define new-sto (lv*s-sto args))
+     (match (v*s-val func)
+       [(? primopV?) (apply-primop (v*s-val func) (lv*s-lst args) env new-sto)] 
+       [else (error 'interp "OAZO Unsupported value for interp: ~v" func)])] 
+    [other (error 'unimplemented)]))
+
+
+;; Helper to interpret the args and thread the store through 
+(define (interp-args [args : (Listof ExprC)] [env : Env] [sto : Store]) : lv*s
+ (cond
+   [(empty? args) (lv*s '() sto)]
+   [else (define res (interp (first args) env sto))
+         (define tail (interp-args (rest args) env (v*s-sto res)))
+    (lv*s (cons (v*s-val res) (lv*s-lst tail)) (lv*s-sto tail))]))
+
+
+
+    
     #;[(strC str) (strV str)]      ;; strC
     #;[(ifC test then else)        ;; ifC
      (define test-result (interp test env)) 
@@ -117,48 +137,48 @@
                      [(? primopV?) (apply-primop f-value args env)] 
                      [else (error 'interp "OAZO Unsupported value for interp: ~v" f-value)])] 
      
-    #;[(lamC a body) (closeV a body env)]))
+    #;[(lamC a body) (closeV a body env)]
 
 ;; Helper to interp the args for apply primop
-(define (interp-primop [args : (Listof ExprC)] [env : Env] [sto : Store]) : (Listof Value)
+#;(define (interp-primop [args : (Listof ExprC)] [env : Env] [sto : Store]) : (Listof Value)
  (let ([arg-values (map (λ ([arg : ExprC])
-                              (interp arg env sto)) args)]) arg-values))
+                              (result-val (interp arg env sto))) args)]) arg-values))
 
 
 ;; Takes a primop an list of args and the environment and ouputs the value 
-(define (apply-primop [primop : primopV] [args : (Listof ExprC)] [env : Env] [sto : Store]) : Value
+(define (apply-primop [primop : primopV] [args : (Listof Value)] [env : Env] [sto : Store]) : v*s
   (cond
     [(equal? args '()) (error 'apply "OAZO no args given ~v" args)]
     [else
-     (define a-v : (Listof Value) (interp-primop args env sto))
-     (define f : Value (first a-v))
-     (define second : Value (first (rest a-v)))
+     (define f      (first args))
+     (define second (first (rest args)))
      (match primop 
        [(primopV '+)
-        (if (and (numV? f) (numV? second)) (numV (+ (numV-n f) (numV-n second)))
+        (if (and (numV? f) (numV? second)) (v*s (numV (+ (numV-n f) (numV-n second))) sto)
             (error 'apply-primop "OAZO ERROR: Non-numeric argument for add"))]
        [(primopV '-)
-        (if (and (numV? f) (numV? second)) (numV (- (numV-n f) (numV-n second)))
+        (if (and (numV? f) (numV? second)) (v*s (numV (- (numV-n f) (numV-n second))) sto)
             (error 'apply-primop "OAZO ERROR: Non-numeric argument for sub"))]
        [(primopV '*)
-        (if (and (numV? f) (numV? second)) (numV (* (numV-n f) (numV-n second)))
+        (if (and (numV? f) (numV? second)) (v*s (numV (* (numV-n f) (numV-n second))) sto)
             (error 'apply-primop "OAZO ERROR: Non-numeric argument for mult"))]
        [(primopV '/) 
         (cond
           [(equal? (numV 0) second) (error 'apply-primop "OAZO ERROR: Divide by zero!")]
-          [else (if (and (numV? f) (numV? second)) (numV (/ (numV-n f) (numV-n second)))
+          [else (if (and (numV? f) (numV? second)) (v*s (numV (/ (numV-n f) (numV-n second))) sto)
                     (error 'apply-primop "OAZO ERROR: Non-numeric argument for div"))])]
        [(primopV '<=)
-        (if (and (numV? f) (numV? second)) (boolV (<= (numV-n f) (numV-n second)))
+        (if (and (numV? f) (numV? second)) (v*s (boolV (<= (numV-n f) (numV-n second))) sto)
             (error 'apply-primop "OAZO ERROR: Non-numeric argument for <="))]
        [(primopV 'num-eq?)
-        (if (and (numV? f) (numV? second)) (boolV (equal? (numV-n f) (numV-n second)))
+        (if (and (numV? f) (numV? second)) (v*s (boolV (equal? (numV-n f) (numV-n second))) sto)
             (error 'apply-primop "OAZO ERROR: Non-numeric argument for num-eq?"))]
       [(primopV 'str-eq?)
-        (if (and (strV? f) (strV? second)) (boolV (equal? (strV-str f) (strV-str second)))
+        (if (and (strV? f) (strV? second)) (v*s (boolV (equal? (strV-str f) (strV-str second))) sto)
             (error 'apply-primop "OAZO ERROR: Non-numeric argument for str-eq?"))]
+       
        [(primopV 'arr)
-        (if (and (numV? f) (numV? second)) (numarrV (arr (numV-n f) (numV-n second)))
+        (if (and (numV? f) (numV? second)) (v*s (numarrV (arr (numV-n f) (numV-n second))) sto)
             (error 'apply-primop "OAZO ERROR: Non-numeric argument for <="))])]))
 
 
@@ -252,7 +272,7 @@
                                      [else (lookup for r)])]))
 
 ;; Helper that looks up a value in an environment
-(define (fetch [loc : Location] [store : Store]) : Value
+(define (fetch [loc : Location] [store : (Listof store-binding)]) : Value
     (match store
       ['() (error 'lookup "OAZO ERROR: location not found: ~e" loc)]
       [(cons (store-binding location val) r) (cond
@@ -341,7 +361,7 @@
 ;; OAZO7 TEST CASES
 ;;-----------------------------------------------------------------------------------
 
-
+(check-equal? (top-interp '{+ 1 2}) "3")
 
 
 
