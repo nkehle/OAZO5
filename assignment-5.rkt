@@ -50,7 +50,7 @@
   (list (env-binding 'substring 17)
         (env-binding 'seq 16)
         (env-binding 'alen 15)
-        (env-binding 'aset! 14)
+        (env-binding 'aset 14)
         (env-binding 'aref 13)
         (env-binding 'arr 12)
         (env-binding 'error 11)
@@ -72,7 +72,7 @@
    (list (store-binding 17 (primopV 'substring))
          (store-binding 16 (primopV 'seq))
          (store-binding 15 (primopV 'alen))
-         (store-binding 14 (primopV 'aset!))
+         (store-binding 14 (primopV 'aset))
          (store-binding 13 (primopV 'aref))
          (store-binding 12 (primopV 'arr))
          (store-binding 11 (primopV 'error))
@@ -107,7 +107,7 @@
     [(strC str)     (v*s (strV str) sto)]
     [(idC s)        (v*s (fetch (lookup s env) (Store-bindings sto)) sto)]
     [(setC sym val) (define new-state (interp val env sto))
-                    (v*s (nullV) (mutate-store sym (v*s-val new-state) env (v*s-sto new-state)))]
+                    (v*s (nullV) (mutate-store (lookup sym env) (v*s-val new-state) env (v*s-sto new-state)))]
     [(appC f a) 
      (define func    (interp f env sto))
      (define args    (interp-args a env (v*s-sto func)))
@@ -132,8 +132,6 @@
     [(lamC a body) (v*s (closeV a body env) sto)]
     [other (error 'unimplemented "~e" other)]))
 
-#;(check-equal? (top-interp '{let {x <- 5}
-                                {seq {x := 10} x}}) "10")
 
 ;; Helper that extends a current environemt/store and returns the updated e*s
 (define (extend-both [env : Env] [params : (Listof Symbol)] [args : (Listof Value)] [sto : Store]) : e*s
@@ -141,27 +139,27 @@
     [(empty? params) (e*s env sto)]
     [else (define cell (lookup (first params) env))
           (if (> cell -1) 
-              (extend-both env (rest params) (rest args) (mutate-store (first params) (first args) env sto))
-                           #;(Store (cons (store-binding cell (first args))
-                                                                      (Store-bindings sto))
-                                                                (+ 1 (Store-next sto)))
+              (extend-both env (rest params) (rest args) (mutate-store (lookup (first params) env) (first args) env sto))
 
               (extend-both (cons (env-binding (first params)  (Store-next sto)) env)
                            (rest params) (rest args) (Store (cons (store-binding
                                                                    (Store-next sto) (first args)) (Store-bindings sto))
                                                             (+ 1 (Store-next sto)))))]))
 
-;; updates store with duplicates
-#;(define (env-extend [env : Env] [params : (Listof Symbol)] [args : (Listof Value)] [sto : Store]) : State
-  (cond
-    [(empty? params) (e*s env sto)]
-    [else (define loc (lookup (first params) env))
-          (if (> loc -1)
-              (env-extend env (rest params) (rest args) (hash-set sto loc (first args)))
-              
-              (env-extend (cons (Binding (first params) (hash-count sto)) env)
-                          (rest params) (rest args) (hash-set sto (hash-count sto) (first args))))]))
-
+;; Mutates the store by replacing the value at a locaiton and returns the new store
+(define (mutate-store [loc : Location] [value : Value] [env : Env] [store : Store]) : Store
+    (let ([location loc])
+      (define (update-store [lst : (Listof store-binding)] [index : Real] [cnt : Real] [val : Value]) : (Listof store-binding)
+        (if (= location -1) (error 'mutate "OAZO: binding does not already exist")
+          (cond
+            [(empty? lst) lst]  
+            [(= cnt 0)        
+             (cons (store-binding index val) (rest lst))]
+            [else             
+             (cons (first lst) (update-store (rest lst) index (- cnt 1) val))])))
+    (let ([updated-bindings (update-store (Store-bindings store) location
+                                          (- (- (Store-next store) 1) location) value)])
+      (Store updated-bindings (Store-next store)))))
 
 
 ;; Helper to check the number of param vs given arguments
@@ -219,10 +217,11 @@
        [(primopV 'aref)
         (if (and (arrV? f) (numV? second)) (v*s (aref f (numV-n second) sto) sto)
             (error 'apply-primop "OAZO ERROR: Non-numeric argument for arr"))]
-       #;[(primopV 'aset)
-        (if (and (arrV? f) (numV? second)) (v*s (aref f (numV-n second) sto) sto)
-            (error 'apply-primop "OAZO ERROR: Non-numeric argument for arr"))]
-       #;[(primopV 'alen)
+       [(primopV 'aset)
+        (if (and (arrV? f) (numV? second) (numV? (first (rest (rest args)))))
+                 (v*s (nullV) (aset f (numV-n second) (first (rest (rest args))) env sto))
+                 (error 'apply-primop "OAZO ERROR: Non-numeric argument for arr"))]
+#;[(primopV 'alen)
         (if (and (arrV? f) (numV? second)) (v*s (aref f (numV-n second) sto) sto)
             (error 'apply-primop "OAZO ERROR: Non-numeric argument for arr"))]
        [(primopV 'seq) (v*s (seq (first args) (rest args) env) sto)])]))
@@ -251,38 +250,11 @@
     [else (fetch (+ (arrV-loc arr) idx) (Store-bindings sto))])) 
 
 ;; Given an index and an array and a value mutate the array to be the new val
-(define (aset [arr : arrV] [idx : Real] [val : Value] [env : Env] [sto : Store])
+(define (aset [arr : arrV] [idx : Real] [val : Value] [env : Env] [sto : Store]) : Store
   (cond
     [(or (< idx 0) (>= idx (arrV-len arr))) (error 'aset "OAZO: Index out of bounds")]
     [else (mutate-store (+ (arrV-loc arr) idx) val env sto)]))
 
-;; Mutates the store and returns the new store
-(define (mutate-store [location : Location] [value : Value] [env : Env] [store : Store]) : Store
-  (define (update-store [lst : (Listof store-binding)] [index : Real] [cnt : Real] [val : Value]) : (Listof store-binding)
-    (if (= location -1) (error 'mutate "OAZO: binding does not already exist")
-        (cond
-          [(empty? lst) lst]  
-          [(= cnt 0)        
-           (cons (store-binding index val) (rest lst))]
-          [else             
-           (cons (first lst) (update-store (rest lst) index (- cnt 1) val))])))
-  (let ([updated-bindings (update-store (Store-bindings store) location
-                                        (- (- (Store-next store) 1) location) value)])
-    (Store updated-bindings (Store-next store))))
-
-#;(define (mutate-store [symbol : Symbol] [value : Value] [env : Env] [store : Store]) : Store
-    (let ([location (lookup symbol env)])
-      (define (update-store [lst : (Listof store-binding)] [index : Real] [cnt : Real] [val : Value]) : (Listof store-binding)
-        (if (= location -1) (error 'mutate "OAZO: binding does not already exist")
-          (cond
-            [(empty? lst) lst]  
-            [(= cnt 0)        
-             (cons (store-binding index val) (rest lst))]
-            [else             
-             (cons (first lst) (update-store (rest lst) index (- cnt 1) val))])))
-    (let ([updated-bindings (update-store (Store-bindings store) location
-                                          (- (- (Store-next store) 1) location) value)])
-      (Store updated-bindings (Store-next store)))))
 
 
 ;; PARSE
@@ -446,10 +418,15 @@
 ;;-----------------------------------------------------------------------------------
 
 
-(top-interp '{arr-eq? {arr 2 3} {arr 4 1}})
+;;pickup aset is not updating the store, and also need to ask about passing by value
+
+(check-equal? (top-interp '{arr-eq? {arr 2 3} {arr 4 1}}) "false")
 
 (check-equal? (top-interp '{let {x <- 5}
                                 {seq {x := 10} x}}) "10")
+
+(check-equal? (top-interp '{let {x <- {arr 5 3}}
+                                {aset x 0 999}}) "null")
 
 #;(top-interp '{{anon {x} : {x 1}}
               {anon {y} : {+ y 2}}})
@@ -458,7 +435,7 @@
 #;(top-interp '{{anon {x y} : {+ x y}} 5 7})
 
 
-(check-equal? (top-interp '{let {f1 <- {anon {x} : {x := {+ x 5}}}}
+#;(check-equal? (top-interp '{let {f1 <- {anon {x} : {x := {+ x 5}}}}
                                 {a <- 10}
                                  a}) "15")
 
