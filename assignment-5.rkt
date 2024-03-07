@@ -180,6 +180,9 @@
 (define (apply-primop [primop : primopV] [args : (Listof Value)] [env : Env] [sto : Store]) : v*s
   (cond
     [(equal? args '()) (error 'apply "OAZO no args given ~v" args)]
+    [(equal? primop (primopV 'alen))
+     (if (arrV? (first args)) (v*s (alen (first args)) sto)
+            (error 'apply-primop "OAZO ERROR: Wrong argument for alen"))]
     [else
      (define f      (first args))
      (define second (first (rest args)))
@@ -220,9 +223,6 @@
         (if (and (arrV? f) (numV? second) (numV? (first (rest (rest args)))))
                  (v*s (nullV) (aset f (numV-n second) (first (rest (rest args))) env sto))
                  (error 'apply-primop "OAZO ERROR: Wrong argument/s for arr"))]
-#;[(primopV 'alen)
-        (if (and (arrV? f) (numV? second)) (v*s (aref f (numV-n second) sto) sto)
-            (error 'apply-primop "OAZO ERROR: Non-numeric argument for arr"))]
        [(primopV 'seq) (v*s (seq (first args) (rest args) env) sto)])]))
 
 
@@ -231,8 +231,6 @@
   (cond
     [(zero? size) (error 'arr "OAZO: arr must be of length 1 or more")]
     [else (arrV loc size)]))
-
-
 
 ;; Takes a store, size, value and the extended store with the added array
 (define (allocate [size : Real] [val : Value] [sto : Store]) : Store
@@ -254,6 +252,12 @@
   (cond
     [(or (< idx 0) (>= idx (arrV-len arr))) (error 'aset "OAZO: Index out of bounds")]
     [else (mutate-store (+ (arrV-loc arr) idx) val env sto)]))
+
+;; Given an index and an array and a value mutate the array to be the new val
+(define (alen [arr : arrV]) : Value
+  (cond
+    #;[(= (arrV-loc arr) -1) (error 'alen "OAZO: Array Does not Exist")]
+    [else (numV (arrV-len arr))]))
 
 
 ;; PARSE
@@ -367,22 +371,6 @@
         [(list _ '<- val) (parse val)]
         [else (error 'parse-binding-args "OAZO: Invalid binding: ~a" binding)]))))
 
-
-;; Returns an environment given two environments
-#;(define (extend-env [env1 : (Listof env-binding)] [env2 : (Listof env-binding)]) : Env
-  (append env1 env2)) 
-
-
-;; Returns a list of bindings given a list of Symbols and list of values
-#;(define (bind [sym : (Listof Symbol)] [val : (Listof Location)]) : (Listof env-binding)
-  (match sym
-    ['() '()]
-    [(cons s rest-s)
-     (match val
-       ['() (error 'bind "OAZO Error: Mismatched number of arguments and symbols")]
-       [(cons v rest-v) (cons (env-binding s v) (bind rest-s rest-v))])]))
-
-
 ;; Checks the body of the lamC and ensures that it is either a single argument
 ;; or that there are proper {} around them
 (define (check-body [body : Sexp]) : Boolean
@@ -390,14 +378,6 @@
     [(list _ ...) #t]  
     [_ #t]))
  
-
-;; Checks if an item is any of the ExprC types
-#;(define (check-ExprC? [expr : Any]) : Boolean
-  (match expr
-    [(numC _) #t] [(idC _) #t] [(appC _ _) #t] [(ifC _ _ _) #t] [(strC _) #t]
-    [else #f]))
-
-
 ;; Evaluate a sequence of args and return the result of the last
 (define (seq [a : Value] [b : (Listof Value)] [env : Env]) : Value
    (if (empty? b) a
@@ -415,6 +395,15 @@
 
 ;; OAZO7 TEST CASES
 ;;-----------------------------------------------------------------------------------
+
+;; alen tests
+(check-equal? (top-interp '{let {a <- {arr 10 3}}
+                                {alen a}}) "10")
+
+(check-exn #rx"OAZO" (lambda ()(top-interp '{let {a <- {arr 10 3}}
+                                {alen "string"}})))
+
+(check-exn #rx"OAZO" (lambda () (top-interp '{alen a})))
 
 ;; aset tests
 (check-equal? (top-interp '{let {a <- {arr 10 3}}
