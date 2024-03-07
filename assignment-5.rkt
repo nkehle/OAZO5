@@ -120,7 +120,7 @@
                                                            (closeV-env clos) (closeV-args clos)
                                                            (lv*s-lst args) new-sto))
                                            (interp (closeV-body clos) (e*s-env new-es) (e*s-sto new-es))]
-       
+      
        [else (error 'interp "OAZO: Error in appC ~v" func)])]
     [(ifC test then else)        ;; ifC
      (define test-result (interp test env sto))
@@ -234,13 +234,13 @@
     [else (arrV loc size)]))
 
 
+
 ;; Takes a store, size, value and the extended store with the added array
 (define (allocate [size : Real] [val : Value] [sto : Store]) : Store
   (cond
     [(zero? size) sto]
     [else (allocate (- size 1) val (Store (cons (store-binding (Store-next sto) val)
                                                 (Store-bindings sto)) (+ (Store-next sto) 1)))]))
-
 
 ;; Returns the element of the numarray at a given index
 (define (aref [arr : arrV] [idx : Real] [sto : Store]) : Value
@@ -249,12 +249,12 @@
     [(>= idx (arrV-len arr)) (error 'aref "OAZO: Index out of bounds: ~a" idx)]
     [else (fetch (+ (arrV-loc arr) idx) (Store-bindings sto))])) 
 
+
 ;; Given an index and an array and a value mutate the array to be the new val
 (define (aset [arr : arrV] [idx : Real] [val : Value] [env : Env] [sto : Store]) : Store
   (cond
     [(or (< idx 0) (>= idx (arrV-len arr))) (error 'aset "OAZO: Index out of bounds")]
     [else (mutate-store (+ (arrV-loc arr) idx) val env sto)]))
-
 
 
 ;; PARSE
@@ -417,6 +417,33 @@
 ;; OAZO7 TEST CASES
 ;;-----------------------------------------------------------------------------------
 
+;; aset tests
+(check-equal? (top-interp '{let {a <- {arr 10 3}}
+                                {seq {aset a 7 999}
+                                     {aref a 7}}}) "999")
+
+(check-exn #rx"OAZO" (lambda () (top-interp '{let {a <- {arr 10 3}}
+                                                  {aset a -2 10}})))
+
+(check-exn #rx"OAZO" (lambda () (top-interp '{let {a <- {arr 10 3}}
+                                                  {aset a 20 10}})))
+
+
+;; aref tests
+(check-equal? (top-interp '{let {a <- {arr 10 3}}
+                                {aref a 2}}) "3")
+
+(check-exn #rx"OAZO" (lambda () (top-interp '{let {a <- {arr 10 3}}
+                                                  {aref a -2}})))
+
+(check-exn #rx"OAZO" (lambda () (top-interp '{let {a <- {arr 10 3}}
+                                                  {aref a 20}})))
+
+
+;; arr tests
+(check-equal? (top-interp '{arr 10 3}) "18-10")
+(check-exn #rx"OAZO" (lambda () (top-interp '{arr 0 0})))
+
 
 ;;pickup aset is not updating the store, and also need to ask about passing by value
 
@@ -428,16 +455,18 @@
 (check-equal? (top-interp '{let {x <- {arr 5 3}}
                                 {aset x 0 999}}) "null")
 
-#;(top-interp '{{anon {x} : {x 1}}
-              {anon {y} : {+ y 2}}})
 
 
-#;(top-interp '{{anon {x y} : {+ x y}} 5 7})
 
-
-#;(check-equal? (top-interp '{let {f1 <- {anon {x} : {x := {+ x 5}}}}
+(check-equal? (top-interp '{let {f1 <- {anon {x} : {x := {+ x 5}}}}
                                 {a <- 10}
-                                 a}) "15")
+                                 a}) "10")
+
+
+(check-equal? (top-interp '{let {x <- 10}
+                                {let {f <- {anon {} : {seq {x := 999}
+                                                           7}}}
+                                  {seq {f} x}}}) "999")
 
 
 #;(top-interp '{let {f <- {anon {a} : {+ a 4}}}
@@ -630,7 +659,8 @@
 (check-equal? (serialize #t) "true")
 (check-equal? (serialize #f) "false")
 (check-equal? (serialize (strV "Hello")) "\"Hello\"")
-(check-equal? (serialize (primopV '+)) "#<primop>")  
+(check-equal? (serialize (primopV '+)) "#<primop>")
+(check-equal? (serialize (nullV)) "null")
 (check-equal? (serialize (closeV (list 'x 'y) (appC (idC '+) (list (numC 1)
                                                                    (numC 1))) (list (env-binding 'x 0)
                                                                                     (env-binding 'y 1)))) "#<procedure>")
