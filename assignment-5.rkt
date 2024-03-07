@@ -129,8 +129,7 @@
                   [else (interp else env (v*s-sto test-result))])]
            [else (error 'interp "OAZO: Test was not a boolean expression: ~e" e)])]
     
-    [(lamC a body) (v*s (closeV a body env) sto)]
-    [other (error 'unimplemented "~e" other)]))
+    [(lamC a body) (v*s (closeV a body env) sto)]))
 
 
 ;; Helper that extends a current environemt/store and returns the updated e*s
@@ -152,7 +151,7 @@
       (define (update-store [lst : (Listof store-binding)] [index : Real] [cnt : Real] [val : Value]) : (Listof store-binding)
         (if (= location -1) (error 'mutate "OAZO: binding does not already exist")
           (cond
-            [(empty? lst) lst]  
+            #;[(empty? lst) lst]  
             [(= cnt 0)        
              (cons (store-binding index val) (rest lst))]
             [else             
@@ -216,11 +215,11 @@
             (error 'apply-primop "OAZO ERROR: Non-numeric argument for arr"))]
        [(primopV 'aref)
         (if (and (arrV? f) (numV? second)) (v*s (aref f (numV-n second) sto) sto)
-            (error 'apply-primop "OAZO ERROR: Non-numeric argument for arr"))]
+            (error 'apply-primop "OAZO ERROR: Wrong argument/s for arr"))]
        [(primopV 'aset)
         (if (and (arrV? f) (numV? second) (numV? (first (rest (rest args)))))
                  (v*s (nullV) (aset f (numV-n second) (first (rest (rest args))) env sto))
-                 (error 'apply-primop "OAZO ERROR: Non-numeric argument for arr"))]
+                 (error 'apply-primop "OAZO ERROR: Wrong argument/s for arr"))]
 #;[(primopV 'alen)
         (if (and (arrV? f) (numV? second)) (v*s (aref f (numV-n second) sto) sto)
             (error 'apply-primop "OAZO ERROR: Non-numeric argument for arr"))]
@@ -370,12 +369,12 @@
 
 
 ;; Returns an environment given two environments
-(define (extend-env [env1 : (Listof env-binding)] [env2 : (Listof env-binding)]) : Env
+#;(define (extend-env [env1 : (Listof env-binding)] [env2 : (Listof env-binding)]) : Env
   (append env1 env2)) 
 
 
 ;; Returns a list of bindings given a list of Symbols and list of values
-(define (bind [sym : (Listof Symbol)] [val : (Listof Location)]) : (Listof env-binding)
+#;(define (bind [sym : (Listof Symbol)] [val : (Listof Location)]) : (Listof env-binding)
   (match sym
     ['() '()]
     [(cons s rest-s)
@@ -393,7 +392,7 @@
  
 
 ;; Checks if an item is any of the ExprC types
-(define (check-ExprC? [expr : Any]) : Boolean
+#;(define (check-ExprC? [expr : Any]) : Boolean
   (match expr
     [(numC _) #t] [(idC _) #t] [(appC _ _) #t] [(ifC _ _ _) #t] [(strC _) #t]
     [else #f]))
@@ -406,7 +405,7 @@
 
 
 ;; Helper to print out the store for debugging
-(define (print-store [sto : Store]) : Void
+#;(define (print-store [sto : Store]) : Void
   (define (print-binding [b : store-binding]) : Void
     (define loc (store-binding-loc b))
     (define val (store-binding-val b))
@@ -428,6 +427,8 @@
 (check-exn #rx"OAZO" (lambda () (top-interp '{let {a <- {arr 10 3}}
                                                   {aset a 20 10}})))
 
+(check-exn #rx"OAZO" (lambda () (top-interp '{let {a <- {arr 10 3}}
+                                                  {aset a "string" 10}})))
 
 ;; aref tests
 (check-equal? (top-interp '{let {a <- {arr 10 3}}
@@ -439,10 +440,14 @@
 (check-exn #rx"OAZO" (lambda () (top-interp '{let {a <- {arr 10 3}}
                                                   {aref a 20}})))
 
+(check-exn #rx"OAZO" (lambda () (top-interp '{let {a <- {arr 10 3}}
+                                                  {aref a "string"}})))
+
 
 ;; arr tests
 (check-equal? (top-interp '{arr 10 3}) "18-10")
 (check-exn #rx"OAZO" (lambda () (top-interp '{arr 0 0})))
+(check-exn #rx"OAZO" (lambda () (top-interp '{arr "cat" "meow"})))
 
 
 ;;pickup aset is not updating the store, and also need to ask about passing by value
@@ -456,7 +461,9 @@
                                 {aset x 0 999}}) "null")
 
 
-
+(check-equal? (top-interp '{let {x <- 33}
+                                {let {x <- 11}
+                                      x}}) "11")
 
 (check-equal? (top-interp '{let {f1 <- {anon {x} : {x := {+ x 5}}}}
                                 {a <- 10}
@@ -468,6 +475,9 @@
                                                            7}}}
                                   {seq {f} x}}}) "999")
 
+
+(check-exn #rx"OAZO" (lambda () (top-interp '{let {a <- 10}
+                                                  {x := 5}})))
 
 #;(top-interp '{let {f <- {anon {a} : {+ a 4}}}
                                 {f 1}})
@@ -499,7 +509,7 @@
 
 (check-equal? (top-interp '{let {x <- {arr 2 3}}
                                 {aref x 0}}) "3")
-
+(check-exn #rx"OAZO" (lambda() (top-interp '{arr-eq? "string" "wont work"})))
 
 
 ;; Top-Interp Tests
@@ -683,6 +693,5 @@
                                             (list (env-binding 'x 1) (env-binding 'y 1) (env-binding 'z 1)))))
               (list (env-binding 'a (closeV (list 'v 'c 'd) 2
                                         (list (env-binding 'x 1) (env-binding 'y 1) (env-binding 'z 1))))))
-(check-exn #rx"OAZO" (lambda()(bind '(a) '()))) 
 
 
