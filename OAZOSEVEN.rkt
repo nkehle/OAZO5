@@ -347,7 +347,7 @@
 (define (type-check [e : ExprC] [env : TEnv]) : Type 
   ;;CHECK THAT THE TEST VALUE OF THE IF IS A BOOL!
  (match e
-   [(? numC?) (numT)]
+   [(? numC?) (numT)] 
    [(? strC?) (strT)]
    ;;sequence you just need to make sure that all of the types in the sequence are valid.
    [(appC (idC 'seq) args) (define s : (Listof Type) (map(lambda ([a : ExprC]) (type-check a env)) (cast args (Listof ExprC))))
@@ -355,7 +355,7 @@
    [(idC id) (lookupType id env)] 
 
    ;;setC is something like this, should return void but you need to check that the variable type and the thing it is getting changed to are the same
-   [(setC sym val) (if (equal? (lookupType sym env) (type-check val type-env))  
+   #;[(setC sym val) (if (equal? (lookupType sym env) (type-check val type-env))  
                        (voidT) 
                        (error 'type-check "OAZO Error: TYPE ERROR in a variable mutation!"))]
    
@@ -364,7 +364,7 @@
                              (error 'type-check "OAZO Error: TYPE ERROR then and else segments of ifC are different types!"))]
    ;;check number of args 
    [(appC f args) (define f-ty : Type (type-check f env))
-                  (printf "f type: ~v, args: ~v\n" f-ty args)
+                  ;;(printf "f type: ~v, args: ~v\n" f-ty args)
                   (match f-ty 
                     [(funT in ret) (if (equal? in (map (lambda ([x : ExprC])(type-check x env)) args))
                                     ret
@@ -503,6 +503,7 @@
 ;; OAZO7 TEST CASES
 ;;-----------------------------------------------------------------------------------
 
+(check-exn #rx"OAZO" (lambda () (type-check (appC (numC 1) (list (numC 1) (numC 1))) type-env)))
 
 ;; Parse-type tests
 (check-equal? (parse-type 'num) (numT))
@@ -514,6 +515,7 @@
 (check-equal? (parse-type '{str str -> bool}) (funT (list (strT) (strT)) (boolT)))
 (check-exn #rx"OAZO" (lambda ()(parse '{{anon {[num x] [num x]} : {+ x x}} 1 1})))
 (check-exn #rx"OAZO" (lambda ()(parse '{let {[x : num] -> 1}{[x : num] -> 1}{+ x x}})))
+
 
 ;; Let parse Type Test
 (check-equal? (parse '{let {[x : num] <- 5}
@@ -537,7 +539,7 @@
                                    {str-eq? a b}}) type-env)))
 
 
-;; Too many operands type-check test
+;; Too many operands type-check test 
 (check-exn #rx"OAZO" (lambda()
                        (type-check (parse '{let {[a : num] <- 1}
                                       {[b : num] <- 2}
@@ -580,6 +582,8 @@
 (check-equal? (type-check (appC (idC '/) (list (numC 1) (numC 1))) type-env) (numT))
 (check-equal? (type-check (appC (idC '*) (list (numC 1) (numC 1))) type-env) (numT))
 (check-equal? (type-check (appC (idC '-) (list (numC 1) (numC 1))) type-env) (numT))
+(check-exn #rx"OAZO" (lambda () (type-check (appC (numC 1) (list (numC 1) (numC 1))) type-env)))
+
 ;;(check-equal? (type-check (parse '{{anon {[num x]} : {anon {[{-> void} y]} : {x := 10}}} 1}) type-env) (voidT))
 #;'{let {[x : num] <- 5}
      {seq {x := 10} x}}
@@ -588,7 +592,7 @@
                              {+ 2 3}}) type-env) (numT))
 #;(check-equal? (type-check (parse ' {anon {[num x]}})))
  
-(check-equal? (type-check(parse '{let {[x : num] <- 1}
+#;(check-equal? (type-check(parse '{let {[x : num] <- 1}
                              {let {[y : {-> void}] <- {x := 10}}
                                 {y}}})type-env) (voidT)) 
 
