@@ -117,8 +117,7 @@
         (Tbinding 'str-eq? (funT (list (strT) (strT)) (boolT)))
         (Tbinding 'num-eq? (funT(list (numT) (numT))(boolT)))
         (Tbinding 'true (boolT))
-        (Tbinding 'false (boolT))
-        (Tbinding 'seq (funT (list Type ...) Type))))
+        (Tbinding 'false (boolT))))
 
 
 ;; TOP-INTERP
@@ -345,14 +344,15 @@
 ;; Recursive type check function that takes in an exprC and a type env and
 ;; outputs the correct type, if able to determine
 ;; (appC (lamC '(x) (list (numT)) (appC (lamC '(y) (list (funT '() (voidT))) (appC (idC 'y) (list (idC 'x)))) (list (setC 'x (numC 10))))) (list (numC 1)))
-(define (type-check [e : ExprC] [env : TEnv]) : Type
+(define (type-check [e : ExprC] [env : TEnv]) : Type 
   ;;CHECK THAT THE TEST VALUE OF THE IF IS A BOOL!
  (match e
    [(? numC?) (numT)]
    [(? strC?) (strT)]
    ;;sequence you just need to make sure that all of the types in the sequence are valid.
-   [(idC 'seq) ()]
-   [(idC id) (lookupType id env)]
+   [(appC (idC 'seq) args) (define s : (Listof Type) (map(lambda ([a : ExprC]) (type-check a env)) (cast args (Listof ExprC))))
+                           (last s)]
+   [(idC id) (lookupType id env)] 
 
    ;;setC is something like this, should return void but you need to check that the variable type and the thing it is getting changed to are the same
    [(setC sym val) (if (equal? (lookupType sym env) (type-check val type-env))  
@@ -588,9 +588,9 @@
                              {+ 2 3}}) type-env) (numT))
 #;(check-equal? (type-check (parse ' {anon {[num x]}})))
  
-#;(check-equal? (type-check(parse '{let {[x : num] <- 1}
-                             {let {[y : {void}] <- {x := 10}}
-                                {y}}})type-env) (voidT))
+(check-equal? (type-check(parse '{let {[x : num] <- 1}
+                             {let {[y : {-> void}] <- {x := 10}}
+                                {y}}})type-env) (voidT)) 
 
 (check-equal? (type-check (appC (idC 'num-eq?) (list (numC 1) (numC 1))) type-env) (boolT))
 (check-equal? (type-check (appC (idC 'str-eq?) (list (strC "pix") (strC "roop"))) type-env) (boolT))
