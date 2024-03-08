@@ -118,13 +118,19 @@
         (Tbinding 'num-eq? (funT(list (numT) (numT))(boolT)))
         (Tbinding 'true (boolT))
         (Tbinding 'false (boolT))))
+        ;;Tbinding 'alen (numT))))
 
 
 ;; TOP-INTERP
 ;;-----------------------------------------------------------------------------------
 ;; Interprets the entirely parsed program
-(define (top-interp [s : Sexp]) : String
-   (serialize (v*s-val (interp (parse s) top-env top-sto))))
+  (define (top-interp [s : Sexp]) : String
+     (serialize (v*s-val (interp (parse s) top-env top-sto))))
+#;(define (top-interp [s : Sexp]) : String
+  (define parsed : ExprC (parse s))
+  (cond
+    [(type-check parsed type-env)(serialize (interp (parse s) top-env top-sto))]))
+
 
 ;; with type checking
 #;(define (top-interp [s : Sexp]) : String
@@ -355,7 +361,7 @@
    [(idC id) (lookupType id env)] 
 
    ;;setC is something like this, should return void but you need to check that the variable type and the thing it is getting changed to are the same
-   #;[(setC sym val) (if (equal? (lookupType sym env) (type-check val type-env))  
+   [(setC sym val) (if (equal? (lookupType sym env) (type-check val type-env))  
                        (voidT) 
                        (error 'type-check "OAZO Error: TYPE ERROR in a variable mutation!"))]
    
@@ -457,26 +463,8 @@
   (cond
     [(null? lst) #t] 
     [(member (car lst) (cdr lst)) #f] 
-    [else (check-duplicates (cdr lst))]))
+    [else (check-duplicates (cdr lst))])) 
 
-
-;; Takes a list of bindings as an Sexp and turns it into a list of symbol
-(define (parse-binding-syms [bindings : (Listof Sexp)]) : (Listof Symbol)
-  (begin
-    (for/list ([binding (in-list bindings)])
-      (match binding
-        [(list sym '<- _) (if (valid-id (cast sym Symbol)) (cast sym Symbol)
-                              (error 'parse-binding-sym "OAZO: Invalid Binding"))]
-        [else (error 'parse-binding-syms "OAZO: Invalid binding: ~a" binding)])))) 
-
-
-;; Takes a list of bindings as an Sexp and turns it into a list of symbol
-(define (parse-binding-args [bindings : (Listof Sexp)]) : (Listof ExprC)
-  (begin
-    (for/list ([binding (in-list bindings)])
-      (match binding
-        [(list _ '<- val) (parse val)]
-        [else (error 'parse-binding-args "OAZO: Invalid binding: ~a" binding)]))))
 
 ;; Checks the body of the lamC and ensures that it is either a single argument
 ;; or that there are proper {} around them
@@ -514,8 +502,8 @@
 (check-equal? (parse-type '{num -> num}) (funT (list (numT)) (numT)))
 (check-equal? (parse-type '{str str -> bool}) (funT (list (strT) (strT)) (boolT)))
 (check-exn #rx"OAZO" (lambda ()(parse '{{anon {[num x] [num x]} : {+ x x}} 1 1})))
-(check-exn #rx"OAZO" (lambda ()(parse '{let {[x : num] -> 1}{[x : num] -> 1}{+ x x}})))
-
+(check-exn #rx"OAZO" (lambda ()(parse '{let {[x : num] -> 1}{[x : num] -> 1}{+ x x}}))) 
+#;(check-equal? (parse '{let {[x : num] -> 1}{[x : num] -> 1}{+ x x}})) 
 
 ;; Let parse Type Test
 (check-equal? (parse '{let {[x : num] <- 5}
@@ -788,34 +776,12 @@
 (check-exn #rx"OAZO" (lambda() (parse '{let {: <- ""} "World"})))
 (check-exn #rx"OAZO" (lambda() (parse '{anon {i} : "hello" 31/7 +})))
 
-;; Parse-Binding-Args Tests
-(define bds3 '{{x <- 5} {y <- 7}})
-(define bds4 '{x <- q})
-(define bds5 '{{z <- {+ 7 8}}
-               {y <- 5}
-               {+ z y}})
-
-(check-equal? (parse-binding-args bds3)
-              (list (numC 5) (numC 7)))
-
-(check-exn #rx"OAZO" (lambda()
-                       (parse-binding-syms bds4)))
-
 
 ;; Parse-Binding-Syms Tests
 (define bds1 '{{x <- 5} {y <- 7}})
 (define bds2 '{1 <- 5})
 (define bds6 '{{meow} -> meow})
 (define bds7 '{{{{not a symbol}}}  <- 1})
-(check-equal? (parse-binding-syms bds1)
-              (list 'x 'y))
-(check-exn #rx"OAZO" (lambda()
-                       (parse-binding-syms bds2)))
-(check-exn #rx"OAZO" (lambda()
-                       (parse-binding-args bds6)))
-
-(check-exn #rx"OAZO" (lambda()
-                       (parse-binding-syms bds7)))
 
 
 ;;Serialize
