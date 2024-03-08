@@ -128,9 +128,9 @@
 
 ;; with type checking
 #;(define (top-interp [s : Sexp]) : String
-  (define parsed : ExprC (parse s))
-  (cond
-    [(type-check parsed type-env)(serialize (interp (parse s) top-env))]))
+  (define parsed (parse s))
+  (type-check parsed type-env)
+  (serialize (interp parsed top-env top-sto)))
 
 
 ;; INTERP
@@ -316,7 +316,7 @@
            (appC (lamC (cast ids(Listof Symbol)) types (parse body))
                  (map(lambda ([a : Sexp]) (parse a)) (cast args (Listof Sexp))))) 
          (error 'parse "OAZO Error: Expected a list of non-duplicate symbols for parameters"))]
-    
+  
     [(list 'anon (list(list ty ids) ...) ': body)          ;; lamC
      (if (and (list? ids) ( all-symbol-and-valid? (cast ids (Listof Sexp))) (check-body body))
          (let([types (map(lambda ([x : Sexp])(parse-type x)) (cast ty (Listof Sexp)))]) 
@@ -454,25 +454,6 @@
     [(member (car lst) (cdr lst)) #f] 
     [else (check-duplicates (cdr lst))]))
 
-
-;; Takes a list of bindings as an Sexp and turns it into a list of symbol
-(define (parse-binding-syms [bindings : (Listof Sexp)]) : (Listof Symbol)
-  (begin
-    (for/list ([binding (in-list bindings)])
-      (match binding
-        [(list sym '<- _) (if (valid-id (cast sym Symbol)) (cast sym Symbol)
-                              (error 'parse-binding-sym "OAZO: Invalid Binding"))]
-        [else (error 'parse-binding-syms "OAZO: Invalid binding: ~a" binding)])))) 
-
-
-;; Takes a list of bindings as an Sexp and turns it into a list of symbol
-(define (parse-binding-args [bindings : (Listof Sexp)]) : (Listof ExprC)
-  (begin
-    (for/list ([binding (in-list bindings)])
-      (match binding
-        [(list _ '<- val) (parse val)]
-        [else (error 'parse-binding-args "OAZO: Invalid binding: ~a" binding)]))))
-
 ;; Checks the body of the lamC and ensures that it is either a single argument
 ;; or that there are proper {} around them
 (define (check-body [body : Sexp]) : Boolean
@@ -498,6 +479,15 @@
 ;; OAZO7 TEST CASES
 ;;-----------------------------------------------------------------------------------
 
+;; Error Coverage
+(check-exn #rx"OAZO" (lambda()(type-check (parse '{let {[a : str] <- 1}
+                                                    {[a : str] <- "pie"}
+                                                    {str-eq? a b}}) type-env)))
+
+(check-exn #rx"OAZO" (lambda()(type-check (parse '{let {[x : num] <- 10}
+                                                    {x := "string"}}) type-env)))
+
+(check-exn #rx"OAZO" (lambda () (type-check (appC (numC 1) (list (numC 1) (numC 1))) type-env)))
 
 ;; Parse-type tests
 (check-equal? (parse-type 'num) (numT))
@@ -509,6 +499,7 @@
 (check-equal? (parse-type '{str str -> bool}) (funT (list (strT) (strT)) (boolT)))
 (check-exn #rx"OAZO" (lambda ()(parse '{{anon {[num x] [num x]} : {+ x x}} 1 1})))
 (check-exn #rx"OAZO" (lambda ()(parse '{let {[x : num] -> 1}{[x : num] -> 1}{+ x x}})))
+(check-exn #rx"OAZO" (lambda () (bindType '{x y} (list (numT)))))
 
 ;; Let parse Type Test
 (check-equal? (parse '{let {[x : num] <- 5}
@@ -531,6 +522,9 @@
                                       {[b : str] <- "pie"}
                                    {str-eq? a b}}) type-env)))
 
+(check-exn #rx"OAZO" (lambda()(type-check (parse '{let {[a : str] <- 1}
+                                                    {[a : str] <- "pie"}
+                                                    {str-eq? a b}}) type-env)))
 
 ;; Too many operands type-check test
 (check-exn #rx"OAZO" (lambda()
@@ -568,8 +562,6 @@
                                 {f 1}}) type-env) (numT))
 
  
-
-
 (check-equal? (type-check (appC (lamC '(x y) (list (numT) (numT)) (appC (idC '+) (list (idC 'x) (idC 'y)))) (list (numC 5) (numC 7))) type-env) (numT))
 (check-equal? (type-check (appC (idC '+) (list (numC 1) (numC 1))) type-env) (numT))
 (check-equal? (type-check (appC (idC '/) (list (numC 1) (numC 1))) type-env) (numT))
@@ -718,6 +710,11 @@
                                        {y 3}})))
 
 (check-exn #rx"OAZO" (lambda () (top-interp
+                                 '{let {[seq : num] <- {anon {[num x]} : {+ x 1}}}
+                                       {[y : [num -> num]] <- {anon {[num z]} : {f 4}}}
+                                       {y 3}})))
+
+(check-exn #rx"OAZO" (lambda () (top-interp
                                  '{{anon {} : 12} 1})))
 
 #;(check-exn #rx"OAZO" (lambda() (top-interp
@@ -781,34 +778,6 @@
 (check-exn #rx"OAZO" (lambda() (parse '{let {: <- ""} "World"})))
 (check-exn #rx"OAZO" (lambda() (parse '{anon {i} : "hello" 31/7 +})))
 
-;; Parse-Binding-Args Tests
-(define bds3 '{{x <- 5} {y <- 7}})
-(define bds4 '{x <- q})
-(define bds5 '{{z <- {+ 7 8}}
-               {y <- 5}
-               {+ z y}})
-
-(check-equal? (parse-binding-args bds3)
-              (list (numC 5) (numC 7)))
-
-(check-exn #rx"OAZO" (lambda()
-                       (parse-binding-syms bds4)))
-
-
-;; Parse-Binding-Syms Tests
-(define bds1 '{{x <- 5} {y <- 7}})
-(define bds2 '{1 <- 5})
-(define bds6 '{{meow} -> meow})
-(define bds7 '{{{{not a symbol}}}  <- 1})
-(check-equal? (parse-binding-syms bds1)
-              (list 'x 'y))
-(check-exn #rx"OAZO" (lambda()
-                       (parse-binding-syms bds2)))
-(check-exn #rx"OAZO" (lambda()
-                       (parse-binding-args bds6)))
-
-(check-exn #rx"OAZO" (lambda()
-                       (parse-binding-syms bds7)))
 
 
 ;;Serialize
