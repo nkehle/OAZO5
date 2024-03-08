@@ -267,7 +267,15 @@
         (if (and (arrV? f) (numV? second) (numV? (first (rest (rest args)))))
                  (v*s (nullV) (aset f (numV-n second) (first (rest (rest args))) env sto))
                  (error 'apply-primop "OAZO ERROR: Wrong argument/s for arr"))]
+       [(primopV 'substring)
+        (if (and (strV? f) (strV? second)) (v*s (sub-str f second) sto)
+            (error 'apply-primop "OAZO ERROR: Non-numeric argument for sub-string?"))]
        [(primopV 'seq) (v*s (seq (first args) (rest args) env) sto)])]))
+
+;; Substring function for strV's
+(define (sub-str [str1 : strV] [str2 : strV])
+  (strV (string-append (strV-str str1) (strV-str str2))))
+
 
 
 ;; Creates a new array of given size and fills with a value
@@ -345,6 +353,7 @@
     [(? symbol? 'bool) (boolT)]
     [(? symbol? 'void) (voidT)]
     [(? symbol? 'arr) (arrT)]
+    [(? symbol? 'numarray) (arrT)]
     [(list in ... '-> out) (funT (map (lambda ([x : Sexp])(parse-type x))
                                       (cast in (Listof Sexp))) (parse-type out))]
     [else (error 'parse-type "OAZO Error: invalid type in given Sexp ~e" ty)]))
@@ -490,6 +499,13 @@ segments of ifC are different types!"))]
 ;; OAZO7 TEST CASES
 ;;-----------------------------------------------------------------------------------
 
+(check-equal? (top-interp '{let {[a : str] <- "test"}
+                                {[b : str] <- " string"}
+                                {substring a b}}) "\"test string\"")
+
+(check-exn #rx"OAZO" (lambda ()(top-interp '{let {[a : str] <- "test"}
+                                              {[b : num] <- 1}
+                                              {substring a b}})))
 
 (check-exn #rx"OAZO" (lambda () (top-interp '{+})))
 
@@ -498,6 +514,9 @@ segments of ifC are different types!"))]
                                 {seq {aset a 7 999}
                                      {aref a 7}}}) "999")
 
+(check-equal? (top-interp '{let {[a : numarray] <- {arr 10 3}}
+                                {seq {aset a 7 999}
+                                     {aref a 7}}}) "999")
 (check-exn #rx"OAZO" (lambda () (top-interp '{let {[a : arr] <- {arr 10 3}}
                                                   {aset a -2 10}})))
 
