@@ -325,6 +325,7 @@
     [(? symbol? 'bool) (boolT)]
     [(? symbol? 'void) (voidT)]
     [(? symbol? 'arr) (arrT)]
+    [(? symbol? 'numarray) (arrT)]
     [(list in ... '-> out) (funT (map (lambda ([x : Sexp])(parse-type x))
                                       (cast in (Listof Sexp))) (parse-type out))]
     [else (error 'parse-type "OAZO Error: invalid type in given Sexp ~e" ty)]))
@@ -475,6 +476,10 @@ segments of ifC are different types!"))]
 
 ;; aset tests
 (check-equal? (top-interp '{let {[a : arr] <- {arr 10 3}}
+                                {seq {aset a 7 999}
+                                     {aref a 7}}}) "999")
+
+(check-equal? (top-interp '{let {[a : numarray] <- {arr 10 3}}
                                 {seq {aset a 7 999}
                                      {aref a 7}}}) "999")
 
