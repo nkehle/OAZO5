@@ -67,13 +67,12 @@
 
 ;; Top Level Environment
 (define top-env
-  (list (env-binding 'substring 17)
-        (env-binding 'seq 16)
-        (env-binding 'alen 15)
-        (env-binding 'aset 14)
-        (env-binding 'aref 13)
-        (env-binding 'arr 12)
-        (env-binding 'error 11)
+  (list (env-binding 'substring 16)
+        (env-binding 'seq 15)
+        (env-binding 'alen 14)
+        (env-binding 'aset 13)
+        (env-binding 'aref 12)
+        (env-binding 'arr 11)
         (env-binding 'arr-eq? 10)
         (env-binding 'str-eq? 9)
         (env-binding 'num-eq? 8)
@@ -89,13 +88,12 @@
 ;; Top Level Store
 (define top-sto
   (Store
-   (list (store-binding 17 (primopV 'substring))
-         (store-binding 16 (primopV 'seq))
-         (store-binding 15 (primopV 'alen))
-         (store-binding 14 (primopV 'aset))
-         (store-binding 13 (primopV 'aref))
-         (store-binding 12 (primopV 'arr))
-         (store-binding 11 (primopV 'error))
+   (list (store-binding 16 (primopV 'substring))
+         (store-binding 15 (primopV 'seq))
+         (store-binding 14 (primopV 'alen))
+         (store-binding 13 (primopV 'aset))
+         (store-binding 12 (primopV 'aref))
+         (store-binding 11 (primopV 'arr))
          (store-binding 10 (primopV 'arr-eq?))
          (store-binding 9 (primopV 'str-eq?))
          (store-binding 8 (primopV 'num-eq?))
@@ -106,7 +104,7 @@
          (store-binding 3 (primopV '-))
          (store-binding 2 (primopV '+))
          (store-binding 1 (boolV #t))
-         (store-binding 0 (boolV #f))) 18))
+         (store-binding 0 (boolV #f))) 17))
 
 ;; top-type-env
 (define type-env
@@ -121,6 +119,7 @@
         (Tbinding 'aset (funT (list (arrT) (numT) (numT)) (voidT)))
         (Tbinding 'alen (funT (list (arrT)) (numT)))
         (Tbinding 'arr-eq? (funT (list (arrT) (arrT)) (boolT)))
+        (Tbinding 'substring (funT (list (strT) (numT) (numT)) (strT)))
         (Tbinding 'true (boolT))
         (Tbinding 'false (boolT))))
 
@@ -267,15 +266,24 @@
         (if (and (arrV? f) (numV? second) (numV? (first (rest (rest args)))))
                  (v*s (nullV) (aset f (numV-n second) (first (rest (rest args))) env sto))
                  (error 'apply-primop "OAZO ERROR: Wrong argument/s for arr"))]
-       [(primopV 'substring)
-        (if (and (strV? f) (strV? second)) (v*s (sub-str f second) sto)
-            (error 'apply-primop "OAZO ERROR: Non-numeric argument for sub-string?"))]
+       [(primopV 'substring) (sub-str args sto)]
        [(primopV 'seq) (v*s (seq (first args) (rest args) env) sto)])]))
 
-;; Substring function for strV's
-(define (sub-str [str1 : strV] [str2 : strV])
-  (strV (string-append (strV-str str1) (strV-str str2))))
-
+;; returns substring of input String
+(define (sub-str [args : (Listof Value)] [sto : Store]) : v*s
+ (match args
+   [(list (? strV? str) (? numV? start) (? numV? end))
+    (cond
+      [(or (< (numV-n start) 0)
+           (> (numV-n end) (string-length (strV-str str)))
+           (> (numV-n start) (numV-n end)))
+       ((error 'OAZO "Index out of bounds for substring"))]
+      #;[(not (and (integer? (numV-n start)) (integer? (numV-n end))))
+       (error 'OAZO "Index for sub-str must be an integer")]
+      [else (v*s (strV (substring (strV-str str)
+                                     (cast (numV-n start) Integer)
+                                     (cast (numV-n end) Integer))) sto)])]
+   [other (error 'OAZO "Not a valid input for substring")]))
 
 
 ;; Creates a new array of given size and fills with a value
@@ -510,12 +518,18 @@ segments of ifC are different types!"))]
 
 
 (check-equal? (top-interp '{let {[a : str] <- "test"}
-                                {[b : str] <- " string"}
-                                {substring a b}}) "\"test string\"")
+                                {[start : num] <- 0}
+                                {[end : num] <- 2}
+                                {substring a start end}}) "\"te\"")
 
 (check-exn #rx"OAZO" (lambda ()(top-interp '{let {[a : str] <- "test"}
-                                              {[b : num] <- 1}
-                                              {substring a b}})))
+                                              {[b : bool] <- "false"}
+                                              {substring a b b}})))
+
+(check-exn #rx"OAZO" (lambda ()(top-interp '{let {[a : str] <- "test"}
+                                              {[start : num] <- 0}
+                                              {[end : num] <- 5}
+                                              {substring a start end}})))
 
 (check-exn #rx"OAZO" (lambda () (top-interp '{+})))
 
@@ -550,7 +564,7 @@ segments of ifC are different types!"))]
                                                   {aref a "string"}})))
 
 ;; arr tests
-(check-equal? (top-interp '{arr 10 3}) "18-10")
+(check-equal? (top-interp '{arr 10 3}) "17-10")
 (check-exn #rx"OAZO" (lambda () (top-interp '{arr 0 0})))
 (check-exn #rx"OAZO" (lambda () (top-interp '{arr "cat" "meow"})))
 
@@ -718,7 +732,7 @@ segments of ifC are different types!"))]
 
 
 ;; arr tests
-(check-equal? (top-interp '{arr 10 3}) "18-10")
+(check-equal? (top-interp '{arr 10 3}) "17-10")
 (check-exn #rx"OAZO" (lambda () (top-interp '{arr 0 0})))
 (check-exn #rx"OAZO" (lambda () (top-interp '{arr "cat" "meow"})))
 
@@ -755,7 +769,7 @@ segments of ifC are different types!"))]
                              {+ 1 2}
                              {+ 2 3}}) "5")
 
-(check-equal? (top-interp '{arr 2 3}) "18-2")
+(check-equal? (top-interp '{arr 2 3}) "17-2")
 
 (check-equal? (top-interp '{let {[x : arr] <- {arr 2 3}}
                                 {aref x 0}}) "3")
@@ -856,6 +870,31 @@ segments of ifC are different types!"))]
                                       top-env top-sto)) (boolV #t))
 (check-exn #rx"OAZO" (lambda () (apply-primop (primopV 'num-eq?) (list (numV 5) (strV "5")) top-env top-sto)))
 (check-exn #rx"OAZO" (lambda () (apply-primop (primopV 'str-eq?) (list (numV 5) (strV "5")) top-env top-sto)))
+
+(check-exn #rx"OAZO" (lambda () (v*s-val (apply-primop  (primopV '+) '() top-env top-sto))))
+(check-exn #rx"OAZO" (lambda () (v*s-val (apply-primop  (primopV '+) (list (strV "str") (numV 5)) top-env top-sto))))
+(check-exn #rx"OAZO" (lambda () (v*s-val (apply-primop  (primopV '-) (list (strV "str") (numV 5)) top-env top-sto))))
+(check-exn #rx"OAZO" (lambda () (v*s-val (apply-primop  (primopV '*) (list (strV "str") (numV 5)) top-env top-sto))))
+(check-exn #rx"OAZO" (lambda () (v*s-val (apply-primop  (primopV '/) (list (strV "str") (numV 5)) top-env top-sto))))
+(check-exn #rx"OAZO" (lambda () (v*s-val (apply-primop  (primopV 'num-eq?)
+                                                        (list (strV "str") (numV 5)) top-env top-sto))))
+(check-exn #rx"OAZO" (lambda () (v*s-val (apply-primop  (primopV 'str-eq?)
+                                                        (list (strV "str") (numV 5)) top-env top-sto))))
+(check-exn #rx"OAZO" (lambda () (v*s-val (apply-primop  (primopV 'arr-eq?)
+                                                        (list (strV "str") (numV 5)) top-env top-sto))))
+(check-exn #rx"OAZO" (lambda () (v*s-val (apply-primop  (primopV '<=)
+                                                        (list (strV "str") (numV 5)) top-env top-sto))))
+(check-exn #rx"OAZO" (lambda () (v*s-val (apply-primop  (primopV 'arr)
+                                                        (list (strV "str") (numV 5)) top-env top-sto))))
+(check-exn #rx"OAZO" (lambda () (v*s-val (apply-primop  (primopV 'aref)
+                                                        (list (strV "str") (numV 5)) top-env top-sto))))
+(check-exn #rx"OAZO" (lambda () (v*s-val (apply-primop  (primopV 'aset)
+                                                        (list (strV "str") (numV 5)) top-env top-sto))))
+(check-exn #rx"OAZO" (lambda () (v*s-val (apply-primop  (primopV 'alen)
+                                                        (list (strV "str") (numV 5)) top-env top-sto))))
+(check-exn #rx"OAZO" (lambda () (v*s-val (apply-primop  (primopV 'substring)
+                                                        (list (strV "str") (numV 5)) top-env top-sto))))
+
 
 ;; Parse Tests
 
