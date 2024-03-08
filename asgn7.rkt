@@ -420,7 +420,7 @@ segments of ifC are different types!"))]
 ;; Helper that looks up a value in an environment
 (define (lookup [for : Symbol] [env : Env]) : Location
     (match env
-      ['() -1 #;(error 'lookup "OAZO ERROR: name not found: ~e" for)]
+      ['() -1]
       [(cons (env-binding name location) r) (cond
                                               [(symbol=? for name) location]
                                               [else (lookup for r)])]))
@@ -498,6 +498,16 @@ segments of ifC are different types!"))]
 
 ;; OAZO7 TEST CASES
 ;;-----------------------------------------------------------------------------------
+
+
+(check-equal? (top-interp '{let {[a : numarray] <- {arr 1 0}}
+                                {let {[a! : {num -> num}] <- {anon {[num expected]} :
+                                                            {if {num-eq? {aref a 0} expected}
+                                                                         then {seq {aset a 0 {+ 1 {aref a 0}}}
+                                                                                   {aref a 0}}
+                                                                         else {aref a 0}}}}
+                                  {a! 1}}}) "0")
+
 
 (check-equal? (top-interp '{let {[a : str] <- "test"}
                                 {[b : str] <- " string"}
