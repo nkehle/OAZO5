@@ -244,8 +244,8 @@
        [(primopV 'arr-eq?) (v*s (boolV (equal? (arrV-loc (cast f arrV)) (arrV-loc (cast second arrV)))) sto)]
        [(primopV 'arr) (v*s (arr (numV-n (cast f numV)) (Store-next sto)) (allocate
                                                                            (numV-n (cast f numV)) second sto))]
-       [(primopV 'aref) (v*s (aref (cast f numV) (numV-n (cast second numV)) sto) sto)]
-       [(primopV 'aset) (v*s (nullV) (aset (cast f numV) (numV-n (cast second numV))
+       [(primopV 'aref) (v*s (aref (cast f arrV) (numV-n (cast second numV)) sto) sto)]
+       [(primopV 'aset) (v*s (nullV) (aset (cast f arrV) (numV-n (cast second numV))
                                            (first (rest (rest args))) env sto))]
        [(primopV 'seq) (v*s (seq (first args) (rest args) env) sto)])]))
 
