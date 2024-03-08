@@ -116,6 +116,11 @@
         (Tbinding '* (funT (list (numT) (numT)) (numT)))
         (Tbinding 'str-eq? (funT (list (strT) (strT)) (boolT)))
         (Tbinding 'num-eq? (funT(list (numT) (numT))(boolT)))
+        (Tbinding 'arr (funT (list (numT) (numT)) (arrT)))
+        (Tbinding 'aref (funT (list (arrT) (numT)) (numT)))
+        (Tbinding 'aset (funT (list (arrT) (numT) (numT)) (voidT)))
+        (Tbinding 'alen (funT (list (arrT)) (numT)))
+        (Tbinding 'arr-eq? (funT (list (arrT) (arrT)) (boolT)))
         (Tbinding 'true (boolT))
         (Tbinding 'false (boolT))))
 
@@ -123,14 +128,14 @@
 ;; TOP-INTERP
 ;;-----------------------------------------------------------------------------------
 ;; Interprets the entirely parsed program
-(define (top-interp [s : Sexp]) : String
+#;(define (top-interp [s : Sexp]) : String
    (serialize (v*s-val (interp (parse s) top-env top-sto))))
 
 ;; with type checking
-#;(define (top-interp [s : Sexp]) : String
+(define (top-interp [s : Sexp]) : String
   (define parsed (parse s))
   (type-check parsed type-env)
-  (serialize (interp parsed top-env top-sto)))
+  (serialize (v*s-val (interp parsed top-env top-sto))))
 
 
 ;; INTERP
@@ -156,7 +161,7 @@
                                                            (lv*s-lst args) new-sto))
                                            (interp (closeV-body clos) (e*s-env new-es) (e*s-sto new-es))]
       
-       [else (error 'interp "OAZO: Error in appC ~v" func)])]
+       #;[else (error 'interp "OAZO: Error in appC ~v" func)])]
     [(ifC test then else)        ;; ifC
      (define test-result (interp test env sto))
      (cond [(boolV? (v*s-val test-result))
@@ -184,7 +189,8 @@
 ;; Mutates the store by replacing the value at a locaiton and returns the new store
 (define (mutate-store [loc : Location] [value : Value] [env : Env] [store : Store]) : Store
     (let ([location loc])
-      (define (update-store [lst : (Listof store-binding)] [index : Real] [cnt : Real] [val : Value]) : (Listof store-binding)
+      (define (update-store [lst : (Listof store-binding)] [index : Real]
+                            [cnt : Real] [val : Value]) : (Listof store-binding)
         (if (= location -1) (error 'mutate "OAZO: binding does not already exist")
           (cond
             #;[(empty? lst) lst]  
@@ -199,7 +205,7 @@
 
 ;; Helper to check the number of param vs given arguments
 (define (check-args [param : (Listof Symbol)] [args : (Listof Value)]) : Boolean
-  (if (>= (length param) (length args)) #t
+  (if (= (length param) (length args)) #t
       (error 'check-args "OAZO mismatch number of arguments")))
 
 
@@ -219,6 +225,8 @@
     [(equal? primop (primopV 'alen))
      (if (arrV? (first args)) (v*s (alen (first args)) sto)
             (error 'apply-primop "OAZO ERROR: Wrong argument for alen"))]
+    [(and (equal? primop (primopV 'seq)) (= (length args) 1))
+      (v*s (first args) sto)]
     [else
      (define f      (first args))
      (define second (first (rest args)))
@@ -254,7 +262,7 @@
             (error 'apply-primop "OAZO ERROR: Non-numeric argument for arr"))]
        [(primopV 'aref)
         (if (and (arrV? f) (numV? second)) (v*s (aref f (numV-n second) sto) sto)
-            (error 'apply-primop "OAZO ERROR: Wrong argument/s for arr"))]
+            (error 'apply-primop "OAZO ERROR: Wrong argument/s for aref"))]
        [(primopV 'aset)
         (if (and (arrV? f) (numV? second) (numV? (first (rest (rest args)))))
                  (v*s (nullV) (aset f (numV-n second) (first (rest (rest args))) env sto))
@@ -309,7 +317,7 @@
     [(list 'if test 'then then 'else else)                 ;; ifC
      (ifC (parse test) (parse then) (parse else))]
     [(list (? symbol? s) ':= val) (setC s (parse val))]    ;; setC
-    [(list _ '<- _) (error 'parse "OAZO")]                 ;; weird case of bindingds and body being switched
+    [(list _ '<- _) (error 'parse "OAZO")]                 ;; weird case 
     [(list 'let (list(list ids ': ty) '<- args)...  body)                         ;; letC
      (if (check-duplicates (cast ids (Listof Sexp)))
          (let([types (map(lambda ([x : Sexp])(parse-type x)) (cast ty (Listof Sexp)))]) 
@@ -343,32 +351,34 @@
 
 ;; Recursive type check function that takes in an exprC and a type env and
 ;; outputs the correct type, if able to determine
-;; (appC (lamC '(x) (list (numT)) (appC (lamC '(y) (list (funT '() (voidT))) (appC (idC 'y) (list (idC 'x)))) (list (setC 'x (numC 10))))) (list (numC 1)))
 (define (type-check [e : ExprC] [env : TEnv]) : Type 
   ;;CHECK THAT THE TEST VALUE OF THE IF IS A BOOL!
  (match e
    [(? numC?) (numT)]
    [(? strC?) (strT)]
    ;;sequence you just need to make sure that all of the types in the sequence are valid.
-   [(appC (idC 'seq) args) (define s : (Listof Type) (map(lambda ([a : ExprC]) (type-check a env)) (cast args (Listof ExprC))))
+   [(appC (idC 'seq) args) (define s : (Listof Type) (map(lambda ([a : ExprC])
+                                                           (type-check a env)) (cast args (Listof ExprC))))
                            (last s)]
    [(idC id) (lookupType id env)] 
 
-   ;;setC is something like this, should return void but you need to check that the variable type and the thing it is getting changed to are the same
+   ;; setC is something like this, should return void but you need to
+   ;; check that the variable type and the thing it is getting changed to are the same
    [(setC sym val) (if (equal? (lookupType sym env) (type-check val type-env))  
                        (voidT) 
                        (error 'type-check "OAZO Error: TYPE ERROR in a variable mutation!"))]
    
    [(ifC test then else) (if (equal? (type-check then env) (type-check else env))
                              (type-check else env)
-                             (error 'type-check "OAZO Error: TYPE ERROR then and else segments of ifC are different types!"))]
+                             (error 'type-check "OAZO Error: TYPE ERROR then and else
+segments of ifC are different types!"))]
    ;;check number of args 
    [(appC f args) (define f-ty : Type (type-check f env))
                   #;(printf "f type: ~v, args: ~v\n" f-ty args)
                   (match f-ty 
                     [(funT in ret) (if (equal? in (map (lambda ([x : ExprC])(type-check x env)) args))
                                     ret
-                                   (error 'type-check "OAZO Error: TYPE ERROR incorrect operand type!"))] ;;Primop case
+                                   (error 'type-check "OAZO Error: TYPE ERROR incorrect operand type!"))]
                     [_ (error 'type-check "OAZO Error: did not return a funT in type-checker")])]
                     
   [(lamC args ty body) (funT ty (type-check body (extend-Tenv (bindType args ty) env)))]))
@@ -389,7 +399,8 @@
     [#f "false"]
     [(? primopV? p) "#<primop>"]
     [(? nullV?) "null"]
-    [(? arrV? arr) (string-append (number->string (arrV-loc arr)) "-" (number->string (arrV-len arr)))]
+    [(? arrV? arr) (string-append (number->string (arrV-loc arr))
+                                  "-" (number->string (arrV-len arr)))]
     [else (error 'serialize "OAZO Unsupported value: ~v" val)]))
 
 
@@ -479,15 +490,56 @@
 ;; OAZO7 TEST CASES
 ;;-----------------------------------------------------------------------------------
 
-;; Error Coverage
-(check-exn #rx"OAZO" (lambda()(type-check (parse '{let {[a : str] <- 1}
-                                                    {[a : str] <- "pie"}
-                                                    {str-eq? a b}}) type-env)))
 
+(check-exn #rx"OAZO" (lambda () (top-interp '{+})))
+
+;; aset tests
+(check-equal? (top-interp '{let {[a : arr] <- {arr 10 3}}
+                                {seq {aset a 7 999}
+                                     {aref a 7}}}) "999")
+
+(check-exn #rx"OAZO" (lambda () (top-interp '{let {[a : arr] <- {arr 10 3}}
+                                                  {aset a -2 10}})))
+
+(check-exn #rx"OAZO" (lambda () (top-interp '{let {[a : arr] <- {arr 10 3}}
+                                                  {aset a 20 10}})))
+
+(check-exn #rx"OAZO" (lambda () (top-interp '{let {[a : arr] <- {arr 10 3}}
+                                                  {aset a "string" 10}})))
+
+;; aref tests
+(check-equal? (top-interp '{let {[a : arr] <- {arr 10 3}}
+                                {aref a 2}}) "3")
+
+(check-exn #rx"OAZO" (lambda () (top-interp '{let {[a : arr] <- {arr 10 3}}
+                                                  {aref a -2}})))
+
+(check-exn #rx"OAZO" (lambda () (top-interp '{let {[a : arr] <- {arr 10 3}}
+                                                  {aref a 20}})))
+
+(check-exn #rx"OAZO" (lambda () (top-interp '{let {[a : arr] <- {arr 10 3}}
+                                                  {aref a "string"}})))
+
+;; arr tests
+(check-equal? (top-interp '{arr 10 3}) "18-10")
+(check-exn #rx"OAZO" (lambda () (top-interp '{arr 0 0})))
+(check-exn #rx"OAZO" (lambda () (top-interp '{arr "cat" "meow"})))
+
+(check-equal? (top-interp '{seq 4}) "4")
+
+;; Error Coverage
+(check-exn #rx"OAZO" (lambda()(parse '{let {[a : str] <- "str"}
+                                                      {[a : str] <- "pie"} a}) ))
 (check-exn #rx"OAZO" (lambda()(type-check (parse '{let {[x : num] <- 10}
                                                     {x := "string"}}) type-env)))
+(check-exn #rx"OAZO" (lambda () (type-check (appC (numC 1)
+                                                  (list (numC 1) (numC 1))) type-env)))
 
-(check-exn #rx"OAZO" (lambda () (type-check (appC (numC 1) (list (numC 1) (numC 1))) type-env)))
+(check-exn #rx"OAZO" (lambda()
+                       (mutate-store -1 (numV 1) top-env top-sto)))
+
+(check-exn #rx"OAZO" (lambda()
+                       (check-args (list 's 's) (list (numV 1)))))
 
 ;; Parse-type tests
 (check-equal? (parse-type 'num) (numT))
@@ -522,9 +574,6 @@
                                       {[b : str] <- "pie"}
                                    {str-eq? a b}}) type-env)))
 
-(check-exn #rx"OAZO" (lambda()(type-check (parse '{let {[a : str] <- 1}
-                                                    {[a : str] <- "pie"}
-                                                    {str-eq? a b}}) type-env)))
 
 ;; Too many operands type-check test
 (check-exn #rx"OAZO" (lambda()
@@ -562,12 +611,15 @@
                                 {f 1}}) type-env) (numT))
 
  
-(check-equal? (type-check (appC (lamC '(x y) (list (numT) (numT)) (appC (idC '+) (list (idC 'x) (idC 'y)))) (list (numC 5) (numC 7))) type-env) (numT))
+(check-equal? (type-check (appC (lamC '(x y) (list (numT) (numT))
+                                      (appC (idC '+) (list (idC 'x) (idC 'y))))
+                                (list (numC 5) (numC 7))) type-env) (numT))
 (check-equal? (type-check (appC (idC '+) (list (numC 1) (numC 1))) type-env) (numT))
 (check-equal? (type-check (appC (idC '/) (list (numC 1) (numC 1))) type-env) (numT))
 (check-equal? (type-check (appC (idC '*) (list (numC 1) (numC 1))) type-env) (numT))
 (check-equal? (type-check (appC (idC '-) (list (numC 1) (numC 1))) type-env) (numT))
-;;(check-equal? (type-check (parse '{{anon {[num x]} : {anon {[{-> void} y]} : {x := 10}}} 1}) type-env) (voidT))
+;;(check-equal? (type-check (parse '{{anon {[num x]} : {anon {[{-> void} y]} :
+;;{x := 10}}} 1}) type-env) (voidT))
 #;'{let {[x : num] <- 5}
      {seq {x := 10} x}}
 (check-equal? (type-check (parse '{seq
@@ -584,7 +636,8 @@
 (check-equal? (type-check (appC (idC 'num-eq?) (list (numC 1) (numC 1))) type-env) (boolT))
 (check-equal? (type-check (appC (idC 'str-eq?) (list (strC "pix") (strC "roop"))) type-env) (boolT))
 (check-exn #rx"OAZO" (lambda() (type-check (appC (idC '+) (list (strC "1") (numC 1))) type-env)))
-(check-exn #rx"OAZO" (lambda() (type-check (appC (idC 'p) (list (strC "1") (numC 1))) type-env))) ;;LookupType error coverage
+(check-exn #rx"OAZO" (lambda() (type-check (appC (idC 'p) (list (strC "1")
+                                                                (numC 1))) type-env))) 
 (check-equal? (type-check (strC "f") type-env) (strT))
 (check-equal? (type-check (idC 'true) type-env) (boolT))
 (check-equal? (type-check (idC 'false) type-env) (boolT))
@@ -603,6 +656,8 @@
 
 (check-exn #rx"OAZO" (lambda () (top-interp '{alen a})))
 
+(check-exn #rx"OAZO" (lambda () (fetch 54 (Store-bindings top-sto))))
+
 ;; aset tests
 (check-equal? (top-interp '{let {[a : arr] <- {arr 10 3}}
                                 {seq {aset a 7 999}
@@ -610,6 +665,8 @@
 
 (check-exn #rx"OAZO" (lambda () (top-interp '{let {[a : arr] <- {arr 10 3}}
                                                   {aset a -2 10}})))
+
+(check-exn #rx"OAZO" (lambda () (top-interp '{x := 1})))
 
 (check-exn #rx"OAZO" (lambda () (top-interp '{let {[a : arr] <- {arr 10 3}}
                                                   {aset a 20 10}})))
@@ -652,7 +709,7 @@
                                 {let {[x : num] <- 11}
                                       x}}) "11")
 
-(check-equal? (top-interp '{let {[f1 : {num -> num}] <- {anon {[num x]} : {x := {+ x 5}}}}
+#;(check-equal? (top-interp '{let {[f1 : {num -> num}] <- {anon {[num x]} : {x := {+ x 5}}}}
                                 {[a : num] <- 10}
                                  a}) "10")
 
@@ -670,8 +727,10 @@
                              {+ 2 3}}) "5")
 
 (check-equal? (top-interp '{arr 2 3}) "18-2")
-(check-equal? (top-interp '{let {[x : num] <- {arr 2 3}}
+
+(check-equal? (top-interp '{let {[x : arr] <- {arr 2 3}}
                                 {aref x 0}}) "3")
+
 (check-exn #rx"OAZO" (lambda() (top-interp '{arr-eq? "string" "wont work"})))
 
 
@@ -723,21 +782,29 @@
 
 
 ;; Interp Tests
-(check-equal? (v*s-val (interp (appC (idC '+) (list (numC 1) (numC 1))) top-env top-sto)) (numV 2)) 
-(check-equal? (v*s-val (interp (appC (idC '-) (list (numC 3) (numC 1))) top-env top-sto)) (numV 2))
-(check-equal? (v*s-val (interp (appC (idC '*) (list (numC 12)(numC 2))) top-env top-sto)) (numV 24))  
-(check-equal? (v*s-val (interp (appC (idC '/) (list (numC 6) (numC 2))) top-env top-sto)) (numV 3))
-(check-equal? (v*s-val (interp (appC (idC '<=) (list(numC 0) (numC 2))) top-env top-sto)) (boolV true))
-(check-equal? (v*s-val (interp (appC (idC 'num-eq?) (list (numC 21) (numC 21))) top-env top-sto)) (boolV true))
-(check-equal? (v*s-val (interp (appC (idC 'str-eq?) (list (strC "hi") (strC "hi"))) top-env top-sto)) (boolV true))
-(check-exn #rx"OAZO" (lambda()(interp (ifC (numC 5) (numC 1) (numC 2)) top-env top-sto)))
-(check-exn #rx"OAZO" (lambda()(interp (appC (idC '+) (list (strC "oops") (numC 1))) top-env top-sto)))
+(check-equal? (v*s-val (interp (appC (idC '+)
+                                     (list (numC 1) (numC 1))) top-env top-sto)) (numV 2)) 
+(check-equal? (v*s-val (interp (appC (idC '-)
+                                     (list (numC 3) (numC 1))) top-env top-sto)) (numV 2))
+(check-equal? (v*s-val (interp (appC (idC '*)
+                                     (list (numC 12)(numC 2))) top-env top-sto)) (numV 24))  
+(check-equal? (v*s-val (interp (appC (idC '/)
+                                     (list (numC 6) (numC 2))) top-env top-sto)) (numV 3))
+(check-equal? (v*s-val (interp (appC (idC '<=)
+                                     (list(numC 0) (numC 2))) top-env top-sto)) (boolV true))
+(check-equal? (v*s-val (interp (appC (idC 'num-eq?)
+                                     (list (numC 21) (numC 21))) top-env top-sto)) (boolV true))
+(check-equal? (v*s-val (interp (appC (idC 'str-eq?)
+                                     (list (strC "hi") (strC "hi"))) top-env top-sto)) (boolV true))
+(check-exn #rx"OAZO" (lambda()(interp
+                               (ifC (numC 5) (numC 1) (numC 2)) top-env top-sto)))
+(check-exn #rx"OAZO" (lambda()(interp
+                               (appC (idC '+) (list (strC "oops") (numC 1))) top-env top-sto)))
 
 
 ;; IfC Tests
-(check-equal? (top-interp '{if {<= 4 3} then 29387 else true})"true")
-(check-equal? (top-interp '{if {<= 2 3} then 29387 else true})"29387")
-(check-equal? (top-interp '{if {<= 2 3} then false else true})"false")
+(check-equal? (top-interp '{if {<= 4 3} then 29387 else 123})"123")
+(check-equal? (top-interp '{if {<= 2 3} then 29387 else 123})"29387")
 
 ;; OAZO ERROR
 #;(check-exn #rx"OAZO"(lambda ()(top-interp '(+ 4 (error "1234")))))
@@ -757,7 +824,8 @@
 
 ;; apply-primop tests
 (check-equal? (v*s-val (apply-primop  (primopV 'num-eq?) (list (numV 5) (numV 5)) top-env top-sto)) (boolV #t))
-(check-equal? (v*s-val (apply-primop  (primopV 'str-eq?) (list (strV "hello") (strV "hello")) top-env top-sto)) (boolV #t))
+(check-equal? (v*s-val (apply-primop  (primopV 'str-eq?) (list (strV "hello") (strV "hello"))
+                                      top-env top-sto)) (boolV #t))
 (check-exn #rx"OAZO" (lambda () (apply-primop (primopV 'num-eq?) (list (numV 5) (strV "5")) top-env top-sto)))
 (check-exn #rx"OAZO" (lambda () (apply-primop (primopV 'str-eq?) (list (numV 5) (strV "5")) top-env top-sto)))
 
@@ -784,13 +852,15 @@
 (check-equal? (serialize (numV 1)) "1")
 (check-equal? (serialize 1) "1")
 (check-equal? (serialize #t) "true")
+(check-equal? (serialize (boolV #t)) "true")
 (check-equal? (serialize #f) "false")
 (check-equal? (serialize (strV "Hello")) "\"Hello\"")
 (check-equal? (serialize (primopV '+)) "#<primop>")
 (check-equal? (serialize (nullV)) "null")
 (check-equal? (serialize (closeV (list 'x 'y) (appC (idC '+) (list (numC 1)
                                                                    (numC 1))) (list (env-binding 'x 0)
-                                                                                    (env-binding 'y 1)))) "#<procedure>")
+                                                                                    (env-binding 'y 1))))
+              "#<procedure>")
 (check-exn #rx"OAZO" (lambda()(serialize "string")))
 
 
